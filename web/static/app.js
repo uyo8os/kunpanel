@@ -11,6 +11,7 @@ const MENU = [
   { key: "cron", icon: "clock", label: "计划任务" },
   { key: "securityhub", icon: "shield", label: "安全" },
   { key: "monitorhub", icon: "pulse", label: "监控" },
+  { key: "nodes", icon: "server", label: "节点" },
   { key: "terminal", icon: "terminal", label: "终端" },
   { key: "settings", icon: "gear", label: "面板设置" },
 ];

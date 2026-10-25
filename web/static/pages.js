@@ -6975,3 +6975,237 @@ function cmModeOf(path) {
   };
   return map[ext] || (ext === "txt" ? "" : "text/plain");
 }
+
+/* ================= 节点管理(多机监控,对标 1Panel 节点管理,免费内置) ================= */
+PAGES.nodes = {
+  title: "节点管理",
+  timer: null,
+  group: "",
+  async render(el) {
+    var self = this;
+    el.innerHTML =
+      '<div class="page-head"><div class="tabs"><span class="tab on">' + I("server") + ' 节点管理</span></div>' +
+      '<div class="tabs-actions"><button class="btn btn-sm btn-plain" id="nd-refresh">' + I("refresh") + ' 刷新</button>' +
+      '<button class="btn btn-sm btn-primary" id="nd-add">' + I("plus") + ' 添加节点</button></div></div>' +
+      '<div class="card"><div class="help" style="margin-bottom:10px">统一纳管多台服务器:SSH 免 Agent 采集 CPU/内存/磁盘/网络,识别对端坤面板并可直达、重启或一键安装。凭据仅保存在本机数据目录。</div>' +
+      '<div id="nd-stats" class="nd-stats">' + '<span class="help">加载中...</span></div>' +
+      '<div id="nd-groups" class="nd-groups" style="display:none"></div>' +
+      '<div id="nd-body">' + skeletonTable(2, 4) + "</div></div>";
+    qs("#nd-add", el).onclick = function() { self.nodeDialog(el, null); };
+    qs("#nd-refresh", el).onclick = function() { var b = qs("#nd-refresh", el); b.disabled = true; self.draw(el, true).then(function() { if (b) b.disabled = false; }); };
+    await this.draw(el);
+    setPageTimer(function() { if (document.visibilityState === "visible") self.draw(el); }, 15000);
+  },
+
+  async draw(el, force) {
+    var self = this;
+    var body = qs("#nd-body", el);
+    if (!body) return;
+    var data;
+    try { data = await api("/nodes" + (force ? "?refresh=1" : "")); }
+    catch (e) { body.innerHTML = emptyState("warn", "加载失败", e.message); return; }
+    if (!qs("#nd-body", el)) return;
+    var list = (data && data.nodes) || [];
+    // 统计 + 分组 chips
+    var stats = qs("#nd-stats", el);
+    if (stats) {
+      if (!list.length) stats.innerHTML = '<span class="help">尚未添加节点</span>';
+      else {
+        var online = list.filter(function(n) { return n.snap && n.snap.online; }).length;
+        var groups = {};
+        list.forEach(function(n) { if (n.group) groups[n.group] = 1; });
+        stats.innerHTML =
+          '<span class="nd-stat">节点 <b>' + list.length + "</b></span>" +
+          '<span class="nd-stat ok">在线 <b>' + online + "</b></span>" +
+          '<span class="nd-stat bad">离线 <b>' + (list.length - online) + "</b></span>" +
+          '<span class="nd-stat">分组 <b>' + Object.keys(groups).length + "</b></span>";
+      }
+    }
+    var gwrap = qs("#nd-groups", el);
+    if (gwrap) {
+      var groups = ["全部"];
+      list.forEach(function(n) { if (n.group && groups.indexOf(n.group) < 0) groups.push(n.group); });
+      if (groups.length > 2 || (groups.length === 2 && groups[1] !== "全部" && self.group && self.group !== groups[1])) {
+        gwrap.style.display = "flex";
+        gwrap.innerHTML = groups.map(function(g) {
+          return '<button class="chip' + (self.group === g || (g === "全部" && !self.group) ? " on" : "") + '" data-nd-group="' + esc(g) + '">' + esc(g) + "</button>";
+        }).join("");
+        qsa("[data-nd-group]", gwrap).forEach(function(b) {
+          b.onclick = function() { self.group = b.getAttribute("data-nd-group") === "全部" ? "" : b.getAttribute("data-nd-group"); self.draw(el); };
+        });
+      } else { gwrap.style.display = "none"; self.group = ""; }
+    }
+    if (!list.length) {
+      body.innerHTML = emptyState("server", "还没有节点", "添加服务器 IP 与 SSH 凭据,即可统一监控与快捷操作");
+      return;
+    }
+    if (self.group) list = list.filter(function(n) { return n.group === self.group; });
+    var html = '<div class="nd-grid">';
+    list.forEach(function(n) {
+      var s = n.snap || {};
+      var onlineTag = s.online
+        ? '<span class="tag tag-success"><span class="dot on"></span>在线</span>'
+        : '<span class="tag tag-danger"><span class="dot"></span>离线</span>';
+      var grp = n.group ? '<span class="tag tag-info">' + esc(n.group) + "</span>" : "";
+      var inner;
+      if (!s.online) {
+        inner = '<div class="nd-meta">' + esc(s.hostname || n.host) + "</div>" +
+          '<div class="nd-err" title="' + esc(s.error || "") + '">' + I("warn") + " " + esc((s.error || "连接失败").slice(0, 120)) + "</div>";
+      } else {
+        inner =
+          '<div class="nd-meta">' + esc(s.os || "-") + " · " + esc(s.kernel || "") + " · " + (s.cores || "-") + " 核 · 负载 " + (s.load1 != null ? s.load1.toFixed(2) : "-") + " · 已运行 " + fmtUptime(s.uptime_sec || 0) + "</div>" +
+          self.bar("CPU", s.cpu_percent, (s.cpu_percent || 0).toFixed(1) + "%") +
+          self.bar("内存", s.mem_total ? s.mem_used / s.mem_total * 100 : 0, fmtBytes(s.mem_used || 0) + " / " + fmtBytes(s.mem_total || 0)) +
+          self.bar("磁盘", s.disk_total ? s.disk_used / s.disk_total * 100 : 0, fmtBytes(s.disk_used || 0) + " / " + fmtBytes(s.disk_total || 0)) +
+          (s.swap_total ? self.bar("交换", s.swap_used / s.swap_total * 100, fmtBytes(s.swap_used || 0) + " / " + fmtBytes(s.swap_total || 0)) : "") +
+          '<div class="nd-net">收 <b>' + fmtBytes(s.net_rx || 0) + '/s</b> · 发 <b>' + fmtBytes(s.net_tx || 0) + "/s</b></div>" +
+          '<div class="nd-panel">' + (s.panel_installed
+            ? '<span class="tag tag-success"><span class="dot on"></span>坤面板 ' + (s.panel_port ? ":" + s.panel_port : "") + "</span>"
+            : '<span class="tag">未安装面板</span>') + "</div>";
+      }
+      var ops = "";
+      if (s.panel_installed && n.panel_url) ops += '<button class="btn btn-xs btn-plain" data-nd-open="' + esc(n.id) + '">' + I("external") + " 打开面板</button>";
+      if (s.panel_installed) ops += '<button class="btn btn-xs btn-plain" data-nd-rp="' + esc(n.id) + '">' + I("restart") + " 重启面板</button>";
+      else if (s.online) ops += '<button class="btn btn-xs btn-plain" data-nd-inst="' + esc(n.id) + '">' + I("download") + " 安装面板</button>";
+      ops += '<button class="btn btn-xs btn-danger-plain" data-nd-reboot="' + esc(n.id) + '">重启服务器</button>';
+      ops += '<button class="btn btn-xs btn-plain" data-nd-edit="' + esc(n.id) + '">' + I("edit") + " 编辑</button>";
+      ops += '<button class="btn btn-xs btn-danger-plain" data-nd-del="' + esc(n.id) + '">' + I("trash") + " 删除</button>";
+      html += '<div class="card nd-card">' +
+        '<div class="nd-head"><div class="nd-title"><b>' + esc(n.name) + "</b>" + grp + onlineTag + "</div>" +
+        '<div class="mono nd-host">' + esc(n.host) + ":" + n.port + "</div></div>" + inner +
+        '<div class="up-ops">' + ops + "</div></div>";
+    });
+    body.innerHTML = html + "</div>";
+    var find = function(id) { return list.find(function(x) { return x.id === id; }); };
+    qsa("[data-nd-open]", body).forEach(function(b) {
+      b.onclick = function() {
+        var n = find(b.getAttribute("data-nd-open"));
+        if (n && n.panel_url) window.open(n.panel_url, "_blank");
+      };
+    });
+    qsa("[data-nd-rp]", body).forEach(function(b) {
+      b.onclick = async function() {
+        if (!(await confirmDlg("重启该节点上的坤面板服务?面板将短暂不可访问。", { danger: true }))) return;
+        try { await api("/nodes/" + b.getAttribute("data-nd-rp") + "/restart-panel", { method: "POST" }); toast("面板已重启"); self.draw(el, true); }
+        catch (e) { toast(e.message, "error"); }
+      };
+    });
+    qsa("[data-nd-inst]", body).forEach(function(b) {
+      b.onclick = async function() {
+        if (!(await confirmDlg("在该节点上安装坤面板?将执行官方一键安装脚本(需要外网),完成后自动识别。"))) return;
+        try {
+          await api("/nodes/" + b.getAttribute("data-nd-inst") + "/install-panel", { method: "POST" });
+          toast("安装任务已开始", "success", 4000, function() { taskCenter(); });
+        } catch (e) { toast(e.message, "error"); }
+      };
+    });
+    qsa("[data-nd-reboot]", body).forEach(function(b) {
+      b.onclick = async function() {
+        var n = find(b.getAttribute("data-nd-reboot"));
+        if (!(await confirmDlg("重启服务器 <b>" + esc(n ? n.name : "") + "</b>?整个服务器将重启,耗时 1-2 分钟。", { danger: true }))) return;
+        try { await api("/nodes/" + b.getAttribute("data-nd-reboot") + "/reboot", { method: "POST" }); toast("重启指令已下发,节点将短暂离线"); }
+        catch (e) { toast(e.message, "error"); }
+      };
+    });
+    qsa("[data-nd-edit]", body).forEach(function(b) {
+      b.onclick = function() { self.nodeDialog(el, find(b.getAttribute("data-nd-edit"))); };
+    });
+    qsa("[data-nd-del]", body).forEach(function(b) {
+      b.onclick = async function() {
+        var n = find(b.getAttribute("data-nd-del"));
+        if (!(await confirmDlg("删除节点 <b>" + esc(n ? n.name : "") + "</b>?仅移除纳管记录,不影响服务器本身。", { danger: true }))) return;
+        try { await api("/nodes/" + b.getAttribute("data-nd-del"), { method: "DELETE" }); toast("已删除"); self.draw(el); }
+        catch (e) { toast(e.message, "error"); }
+      };
+    });
+  },
+
+  bar(label, pct, text) {
+    var p = Math.max(0, Math.min(100, pct || 0));
+    var cls = p >= 90 ? "bad" : p >= 70 ? "warn" : "ok";
+    return '<div class="nd-bar"><span class="nd-bar-label">' + label + '</span><span class="nd-bar-track"><span class="nd-bar-fill ' + cls + '" style="width:' + p.toFixed(1) + '%"></span></span><span class="nd-bar-text mono">' + esc(text) + "</span></div>";
+  },
+
+  nodeDialog(el, node) {
+    var self = this;
+    var isEdit = !!node;
+    var m = modal({
+      title: isEdit ? "编辑节点 - " + esc(node.name) : "添加节点", width: 560,
+      body:
+        '<div class="form-item required"><label>名称</label><input class="input" id="nd-name" placeholder="如 生产-香港01" value="' + (isEdit ? esc(node.name) : "") + '"></div>' +
+        '<div class="form-row2">' +
+        '<div class="form-item"><label>分组</label><input class="input" id="nd-group" placeholder="如 生产环境" value="' + (isEdit ? esc(node.group || "") : "") + '"></div>' +
+        '<div class="form-item required"><label>SSH 端口</label><input class="input" id="nd-port" type="number" value="' + (isEdit ? node.port : 22) + '"></div></div>' +
+        '<div class="form-item required"><label>主机地址</label><input class="input mono" id="nd-host" placeholder="IP 或域名" value="' + (isEdit ? esc(node.host) : "") + '"></div>' +
+        '<div class="form-row2">' +
+        '<div class="form-item required"><label>用户名</label><input class="input" id="nd-user" placeholder="root" value="' + (isEdit ? esc(node.user) : "") + '"></div>' +
+        '<div class="form-item required"><label>密码</label><input class="input" id="nd-pass" type="password" placeholder="' + (isEdit ? "留空沿用已存密码" : "SSH 登录密码") + '"></div></div>' +
+        '<div class="form-item"><label>主机指纹(可选,TOFU)</label><input class="input mono" id="nd-fp" placeholder="可用性检查后自动回填" value="' + (isEdit ? esc(node.fingerprint || "") : "") + '">' +
+        '<div class="help">首次检查会回显服务器实际指纹,确认无误保存即可;入库后指纹漂移将拒绝连接(防劫持)。</div></div>' +
+        '<div class="form-item"><label>备注</label><input class="input" id="nd-desc" value="' + (isEdit ? esc(node.desc || "") : "") + '"></div>' +
+        '<div id="nd-check-box"></div>',
+      footer: '<button class="btn btn-plain" data-act="no">取 消</button>' +
+        '<button class="btn btn-plain" data-act="check" id="nd-check-btn">' + I("pulse") + ' 可用性检查</button>' +
+        '<button class="btn btn-primary" data-act="yes">' + (isEdit ? "保 存" : "添 加") + "</button>",
+    });
+    var collect = function(withPass) {
+      return {
+        id: isEdit ? node.id : "",
+        name: qs("#nd-name", m.el).value.trim(),
+        group: qs("#nd-group", m.el).value.trim(),
+        host: qs("#nd-host", m.el).value.trim(),
+        port: parseInt(qs("#nd-port", m.el).value, 10) || 22,
+        user: qs("#nd-user", m.el).value.trim(),
+        password: withPass ? qs("#nd-pass", m.el).value : "",
+        fingerprint: qs("#nd-fp", m.el).value.trim(),
+        desc: qs("#nd-desc", m.el).value.trim(),
+      };
+    };
+    var box = qs("#nd-check-box", m.el);
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    qs('[data-act="check"]', m.el).onclick = async function() {
+      var btn = qs('[data-act="check"]', m.el);
+      var f = collect(true);
+      if (!f.host || !f.user) { toast("请先填写主机与用户名", "error"); return; }
+      btn.disabled = true;
+      box.innerHTML = '<div class="help">正在连接 ' + esc(f.host) + ':' + f.port + ' ...(含 1 秒指标采样)</div>';
+      try {
+        var res = await api("/nodes/check", { method: "POST", body: f });
+        var s = res.snap || {};
+        var rows = [];
+        if (s.online) {
+          rows.push('<div class="nd-ck ok">' + I("shield") + " SSH 连接与认证通过</div>");
+          rows.push('<div class="nd-ck">' + esc(s.hostname || "-") + " · " + esc(s.os || "-") + " · " + (s.cores || "?") + " 核 · 内核 " + esc(s.kernel || "-") + "</div>");
+          rows.push('<div class="nd-ck">' + (s.panel_installed
+            ? "已检测到坤面板,端口 " + (s.panel_port || "?") + (s.panel_entrance && s.panel_entrance !== "-" ? ",入口 /" + esc(s.panel_entrance) : "")
+            : "未检测到坤面板(保存后可在列表一键安装)") + "</div>");
+        } else {
+          rows.push('<div class="nd-ck bad">' + I("warn") + " " + esc(s.error || "连接失败") + "</div>");
+        }
+        if (res.fingerprint) {
+          qs("#nd-fp", m.el).value = res.fingerprint;
+          rows.push('<div class="nd-ck">主机指纹:<span class="mono">' + esc(res.fingerprint) + '</span> 已回填,请核对后保存</div>');
+        }
+        box.innerHTML = rows.join("");
+      } catch (e) { box.innerHTML = '<div class="nd-ck bad">' + I("warn") + " " + esc(e.message) + "</div>"; }
+      btn.disabled = false;
+    };
+    qs('[data-act="yes"]', m.el).onclick = async function() {
+      var f = collect(true);
+      if (!f.name || !f.host || !f.user) { toast("名称、主机、用户名不能为空", "error"); return; }
+      if (!isEdit && !f.password) { toast("请填写 SSH 密码", "error"); return; }
+      try {
+        if (isEdit) {
+          await api("/nodes/" + node.id, { method: "PUT", body: f });
+          toast("已保存");
+        } else {
+          await api("/nodes", { method: "POST", body: f });
+          toast("已添加,正在采集节点状态");
+        }
+        m.close();
+        self.draw(el, true);
+      } catch (e) { toast(e.message, "error"); }
+    };
+  },
+};
+
