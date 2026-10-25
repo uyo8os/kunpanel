@@ -2,18 +2,18 @@
 "use strict";
 
 const MENU = [
-  { key: "dashboard", icon: "grid", label: "概览" },
-  { key: "websites", icon: "globe", label: "网站" },
-  { key: "databases", icon: "database", label: "数据库" },
-  { key: "apps", icon: "store", label: "应用商店" },
-  { key: "docker", icon: "cube", label: "容器" },
-  { key: "files", icon: "folder", label: "文件" },
-  { key: "cron", icon: "clock", label: "计划任务" },
-  { key: "securityhub", icon: "shield", label: "安全" },
-  { key: "monitorhub", icon: "pulse", label: "监控" },
-  { key: "nodes", icon: "server", label: "节点" },
-  { key: "terminal", icon: "terminal", label: "终端" },
-  { key: "settings", icon: "gear", label: "面板设置" },
+  { key: "dashboard", icon: "grid", label: "概览", tip: "服务器状态与资源使用一览" },
+  { key: "websites", icon: "globe", label: "网站", tip: "创建网站、绑定域名、HTTPS 证书" },
+  { key: "databases", icon: "database", label: "数据库", tip: "MySQL 等数据库的建库、账号与备份" },
+  { key: "apps", icon: "store", label: "应用商店", tip: "一键安装 WordPress、PHP、数据库等应用" },
+  { key: "docker", icon: "cube", label: "容器", tip: "管理服务器上的 Docker 容器与镜像" },
+  { key: "files", icon: "folder", label: "文件", tip: "服务器文件管理:上传、编辑、压缩打包" },
+  { key: "cron", icon: "clock", label: "计划任务", tip: "定时备份、日志清理等自动化任务" },
+  { key: "securityhub", icon: "shield", label: "安全", tip: "防火墙、WAF 防护、SSH 加固与登录日志" },
+  { key: "monitorhub", icon: "pulse", label: "监控", tip: "网站拨测告警、进程、服务与网络工具" },
+  { key: "nodes", icon: "server", label: "节点", tip: "多台服务器统一纳管:监控与快捷操作" },
+  { key: "terminal", icon: "terminal", label: "终端", tip: "网页版 SSH 命令行,无需额外工具" },
+  { key: "settings", icon: "gear", label: "面板设置", tip: "面板密码、安全入口、HTTPS 与在线更新" },
 ];
 
 /* 旧路由 → 新页面(历史书签与深链兼容) */
@@ -174,7 +174,7 @@ const App = {
         <aside class="sidebar ${localStorage.getItem("kp_sidebar_collapse") === "1" ? "collapsed" : ""}" id="sidebar">
           <div class="sidebar-logo"><div class="logo-badge">${logoSVG(34)}</div><span class="logo-text">${esc(this.panelName)}</span></div>
           <nav class="sidebar-menu">
-            ${MENU.map((m) => '<div class="menu-item" data-key="' + m.key + '">' + I(m.icon) + '<span class="menu-label">' + m.label + "</span></div>").join("")}
+            ${MENU.map((m) => '<div class="menu-item" data-key="' + m.key + '"' + (m.tip ? ' title="' + m.tip + '"' : "") + ">" + I(m.icon) + '<span class="menu-label">' + m.label + "</span></div>").join("")}
           </nav>
           <div class="sidebar-foot">
             <div class="collapse-btn" id="btn-collapse">${I("menuFold")}<span class="menu-label">收起菜单</span></div>

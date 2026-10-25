@@ -231,11 +231,12 @@ function skeletonTable(rows, cols, titleW) {
   return html + "</div>";
 }
 
-/* 空状态(SVG) */
-function emptyState(icon, text, sub) {
+/* 空状态(SVG;actionHtml 可选:居中操作按钮等 CTA) */
+function emptyState(icon, text, sub, actionHtml) {
   return '<div class="empty-tip page-fade"><div class="empty-ico">' + I(icon || "inbox") + "</div>" +
     '<div class="empty-text">' + esc(text || "暂无数据") + "</div>" +
-    (sub ? '<div class="empty-sub">' + esc(sub) + "</div>" : "") + "</div>";
+    (sub ? '<div class="empty-sub">' + esc(sub) + "</div>" : "") +
+    (actionHtml ? '<div class="empty-act">' + actionHtml + "</div>" : "") + "</div>";
 }
 
 /* ---------- Toast ---------- */

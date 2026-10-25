@@ -1452,3 +1452,31 @@ tr.fm-selected { background: var(--primary-light); }
 .nd-ck.ok { color: #16a34a; }
 .nd-ck.bad { color: var(--danger, #ef4444); }
 .nd-ck-note { color: var(--text-3); }
+
+/* ================= 新手引导(概览页)+ 空态 CTA ================= */
+.guide-card { border-color: color-mix(in srgb, var(--primary, #3b82f6) 35%, var(--border-light)); background: linear-gradient(135deg, color-mix(in srgb, var(--primary, #3b82f6) 6%, var(--card)), var(--card)); }
+.guide-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.guide-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--primary, #3b82f6); color: #fff; display: flex; align-items: center; justify-content: center; flex: none; }
+.guide-ico svg { width: 20px; height: 20px; }
+.guide-title { flex: 1; min-width: 0; }
+.guide-title b { display: block; font-size: 14.5px; }
+.guide-title span { font-size: 12px; color: var(--text-3); }
+.guide-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.guide-step {
+  display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 10px;
+  background: var(--bg-2); border: 1px solid var(--border-light);
+}
+.guide-step.done { opacity: .62; }
+.gs-mark {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--primary, #3b82f6); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; flex: none;
+}
+.guide-step.done .gs-mark { background: #22c55e; }
+.gs-mark svg { width: 14px; height: 14px; }
+.gs-body { flex: 1; min-width: 0; }
+.gs-body b { display: block; font-size: 13px; }
+.gs-body span { font-size: 11.5px; color: var(--text-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-done { font-size: 12px; color: #16a34a; flex: none; display: flex; align-items: center; gap: 3px; }
+.gs-done svg { width: 13px; height: 13px; }
+@media (max-width: 768px) { .guide-steps { grid-template-columns: 1fr; } }
+.empty-act { margin-top: 16px; }

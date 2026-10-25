@@ -20,10 +20,11 @@ PAGES.dashboard = {
       api("/crons").catch(function() { return []; }),
       api("/uptime/monitors").catch(function() { return []; }),
       api("/ssl/certs").catch(function() { return []; }),
+      api("/settings").catch(function() { return {}; }),
     ]);
     if (el.dataset.route !== "dashboard") return;
     var d = results[0], sites = results[1] || [], dbs = results[2] || [], crons = results[3] || [],
-        ups = results[4] || [], certs = results[5] || [];
+        ups = results[4] || [], certs = results[5] || [], st = results[6] || {};
     var s = d.system, p = d.panel, dk = d.docker;
     var disk = s.disks && s.disks[0] ? s.disks[0] : { used: 0, total: 0, free: 0, usage_percent: 0 };
     var upDown = 0;
@@ -46,6 +47,31 @@ PAGES.dashboard = {
     // 数据库 KPI = 各运行实例的业务库总数(与数据库页口径一致;databases 由后端统计)
     var dbTotal = dbs.reduce(function(a, r) { return a + (r.running ? r.databases || 0 : 0); }, 0);
 
+    // 新手引导(四步上手;全部完成或手动关闭后不再显示)
+    var guideSteps = [
+      { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "应用商店、PHP、数据库都依赖它,点一下自动装", go: "docker", btn: "去安装" },
+      { no: 2, done: sites.length > 0, title: "创建第一个网站", desc: "填个域名就行,支持静态页面、PHP 程序和反向代理", go: "websites", btn: "去建站" },
+      { no: 3, done: dbs.length > 0, title: "安装数据库或应用", desc: "MySQL、WordPress 等常用软件一键安装", go: "apps", btn: "去商店" },
+      { no: 4, done: !!((st.entrance && st.entrance !== "-") || st.ssl || st.totp_enabled), title: "加固面板安全", desc: "开启安全入口 / HTTPS / 两步验证,任一项即可", go: "settings", btn: "去设置" },
+    ];
+    var guideDone = guideSteps.filter(function(x) { return x.done; }).length;
+    var guideHide = false;
+    try { guideHide = localStorage.getItem("kp_guide_hide") === "1"; } catch (e2) {}
+    var guideHtml = "";
+    if (!guideHide && guideDone < guideSteps.length) {
+      guideHtml = '<div class="card guide-card" id="guide-card">' +
+        '<div class="guide-head"><span class="guide-ico">' + I("bolt") + '</span><div class="guide-title"><b>欢迎使用坤面板,四步完成部署</b>' +
+        "<span>已完成 " + guideDone + " / " + guideSteps.length + ' 步,点「去操作」直达对应页面,不需要按顺序</span></div>' +
+        '<button class="btn btn-xs btn-plain" id="guide-hide">不再显示</button></div>' +
+        '<div class="guide-steps">' + guideSteps.map(function(g) {
+          return '<div class="guide-step' + (g.done ? " done" : "") + '">' +
+            '<span class="gs-mark">' + (g.done ? I("shield") : g.no) + "</span>" +
+            '<div class="gs-body"><b>' + g.title + "</b><span>" + g.desc + "</span></div>" +
+            (g.done ? '<span class="gs-done">' + I("shield") + " 已完成</span>" : '<a class="btn btn-xs btn-primary" href="#/' + g.go + '">' + g.btn + "</a>") +
+            "</div>";
+        }).join("") + "</div></div>";
+    }
+
     function bar(label, pct, sub, color, liveId) {
       var pctCls = pct >= 90 ? "danger" : pct >= 75 ? "warn" : "";
       return '<div class="mon-row"><div class="mon-head"><span>' + label + (liveId ? ' <b id="' + liveId + '">' + pct.toFixed(1) + "%</b>" : "<b>" + pct.toFixed(1) + "%</b>") + "</span>" +
@@ -56,7 +82,7 @@ PAGES.dashboard = {
       return bar("磁盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used) + " / " + fmtBytes(dk2.total), "", i === 0 ? "live-disk" : "");
     }).join("");
 
-    var html = '<div class="kpi-strip">' +
+    var html = guideHtml + '<div class="kpi-strip">' +
       kpi("globe", "#38bdf8", sites.length, "网站", "websites") +
       kpi("database", "#60a5fa", dbTotal, "数据库", "databases") +
       kpi("cube", "#0ea5e9", dk.running ? dk.runningCount + "/" + dk.containers : "-", "容器", "docker") +
@@ -107,6 +133,16 @@ PAGES.dashboard = {
     el.querySelectorAll("[data-go]").forEach(function(n) {
       n.onclick = function() { location.hash = "#/" + n.getAttribute("data-go"); };
     });
+
+    // 新手引导:关闭后记住
+    (function() {
+      var gh = document.getElementById("guide-hide");
+      if (gh) gh.onclick = function() {
+        try { localStorage.setItem("kp_guide_hide", "1"); } catch (e) {}
+        var g = document.getElementById("guide-card");
+        if (g) g.remove();
+      };
+    })();
 
     // 证书状态
     (function() {
@@ -926,7 +962,7 @@ PAGES.websites = {
       body: '<div class="wz-types">' +
         '<div class="wz-type-card active" data-t="static"><b>静态站点</b><div>HTML/CSS/JS 纯静态网站</div></div>' +
         '<div class="wz-type-card" data-t="php"><b>PHP 站点</b><div>WordPress/ThinkPHP 等 PHP 程序<br><span class="help" style="margin:0">需安装 PHP 运行时</span></div></div>' +
-        '<div class="wz-type-card" data-t="proxy"><b>反向代理</b><div>Go/Node/Java 等本地服务<br>或任意外部服务</div></div></div>' +
+        '<div class="wz-type-card" data-t="proxy"><b>反向代理</b><div>把域名转发到本机端口或任意外部服务<br><span class="help" style="margin:0">Go/Node/Java 应用常用</span></div></div></div>' +
         '<div class="form-item required" style="margin-top:14px"><label>域名</label><input class="input" id="w-domain" placeholder="多个域名用空格分隔,如:demo.com www.demo.com">' +
         '<div class="help">请先将域名解析到本服务器</div></div>' +
         '<div id="w-dyn"></div>' +
@@ -6517,6 +6553,7 @@ PAGES.securityhub = {
       if (this.tabsDef[i].page === cur) this.tab = this.tabsDef[i].key;
     }
     var html = '<div class="card"><div class="card-title">安全中心</div>' +
+      '<div class="help" style="margin:-4px 0 10px">这里是面板的安全防线:WAF 拦截黑客攻击,防火墙管理端口开关,SSH 安全防暴力破解,日志可查登录与操作记录。建议新手至少开启「系统防火墙」。</div>' +
       '<div class="hub-tabs">';
     this.tabsDef.forEach(function(t) {
       html += '<div class="hub-tab ' + (self.tab === t.key ? "active" : "") + '" data-tab="' + t.key + '">' + t.label + "</div>";
@@ -6561,6 +6598,7 @@ PAGES.monitorhub = {
       if (this.tabsDef[i].page === cur) this.tab = this.tabsDef[i].key;
     }
     var html = '<div class="card"><div class="card-title">监控中心</div>' +
+      '<div class="help" style="margin:-4px 0 10px">网站打不开?在这里添加拨测监控,网站宕机自动发告警;还能管理进程、系统服务和排查网络问题。</div>' +
       '<div class="hub-tabs">';
     this.tabsDef.forEach(function(t) {
       html += '<div class="hub-tab ' + (self.tab === t.key ? "active" : "") + '" data-tab="' + t.key + '">' + t.label + "</div>";
@@ -6739,7 +6777,7 @@ PAGES.docker = {
       '<span class="tag tag-info">共 ' + list.length + " 个容器</span>" +
       '<button class="btn btn-sm btn-primary" id="dk-create">' + I("plus") + " 创建容器</button></div>";
     if (!list.length) {
-      html += emptyState("cube", "还没有容器", "去应用商店一键部署,或点击创建容器");
+      html += emptyState("cube", "还没有容器", "去应用商店一键部署,或点击创建容器", '<a class="btn btn-sm btn-primary" href="#/apps">去应用商店部署</a>');
     } else {
       html += '<div class="table-wrap"><table class="table"><thead><tr><th>名称</th><th>镜像</th><th style="width:110px">状态</th><th style="width:150px">CPU / 内存</th><th>端口</th><th style="width:250px">操作</th></tr></thead><tbody>';
       list.forEach(function(c) {
@@ -7034,7 +7072,10 @@ PAGES.nodes = {
     }
     if (self.group) list = list.filter(function(n) { return n.group === self.group; });
     if (!list.length) {
-      body.innerHTML = emptyState("server", self.kw || self.group ? "没有匹配的节点" : "还没有节点", "添加服务器 IP 与 SSH 凭据,即可统一监控与快捷操作");
+      body.innerHTML = emptyState("server", self.kw || self.group ? "没有匹配的节点" : "还没有节点", "添加服务器 IP 与 SSH 凭据,即可统一监控与快捷操作",
+        self.kw || self.group ? "" : '<button class="btn btn-sm btn-primary" id="nd-empty-add">' + I("plus") + " 添加第一个节点</button>");
+      var ndEmptyAdd = qs("#nd-empty-add", body);
+      if (ndEmptyAdd) ndEmptyAdd.onclick = function() { self.nodeDialog(el, null); };
       return;
     }
     var rows = "";
