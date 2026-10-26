@@ -2096,9 +2096,11 @@ PAGES.apps = {
       if (!shown.length) html += '<div class="help" style="padding:30px;text-align:center;width:100%">没有匹配的应用</div>';
       shown.forEach(function(t, i) {
         var inst = instances.find(function(x) { return x.key === t.key; });
+        // 新手推荐标识:建站三件套
+        var rec = { php: "建站必装", mysql: "网站数据库", wordpress: "一键建站" }[t.key];
         html += '<div class="app-card" style="animation-delay:' + Math.min(i * 0.04, 0.4) + 's">';
         html += '<div class="app-head">' + appIcon(t, 44);
-        html += '<div><h4 style="font-size:14px;font-weight:600">' + esc(t.name) + '</h4><span class="tag tag-primary">' + esc(t.category) + '</span></div></div>';
+        html += '<div><h4 style="font-size:14px;font-weight:600">' + esc(t.name) + (rec ? ' <span class="tag tag-success" title="新手建站推荐">' + esc(rec) + "</span>" : "") + '</h4><span class="tag tag-primary">' + esc(t.category) + '</span></div></div>';
         html += '<p style="font-size:12px;color:var(--text-3);flex:1;min-height:32px;line-height:1.5;margin:6px 0">' + esc(t.desc) + '</p>';
         html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto">';
         html += '<span class="tag tag-info">' + esc(t.version) + '</span>';

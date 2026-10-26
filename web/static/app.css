@@ -1506,3 +1506,42 @@ tr.fm-selected { background: var(--primary-light); }
 .gs-done svg { width: 13px; height: 13px; }
 @media (max-width: 768px) { .guide-steps { grid-template-columns: 1fr; } }
 .empty-act { margin-top: 16px; }
+
+/* ================= 新手帮助中心 ================= */
+.hc-wrap { max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+.hc-cat {
+  display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700;
+  color: var(--text-2); margin: 16px 0 8px;
+}
+.hc-cat:first-child { margin-top: 0; }
+.hc-cat svg { width: 15px; height: 15px; color: var(--primary); }
+.hc-item { border: 1px solid var(--border-light); border-radius: 10px; margin-bottom: 8px; background: var(--bg-2); overflow: hidden; }
+.hc-item summary {
+  padding: 11px 14px; cursor: pointer; font-size: 13px; font-weight: 500; list-style: none;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; transition: color .12s;
+}
+.hc-item summary::-webkit-details-marker { display: none; }
+.hc-item summary::after {
+  content: ""; width: 7px; height: 7px; flex: none;
+  border-right: 1.5px solid var(--text-3); border-bottom: 1.5px solid var(--text-3);
+  transform: rotate(45deg); transition: transform .15s;
+}
+.hc-item[open] summary::after { transform: rotate(225deg); }
+.hc-item summary:hover { color: var(--primary); }
+.hc-a { padding: 0 14px 12px; font-size: 12.5px; line-height: 1.85; color: var(--text-2); }
+.hc-a .hc-go { color: var(--primary); font-weight: 500; white-space: nowrap; }
+
+/* ================= 每页一次性新手提示条 ================= */
+.page-tip {
+  display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; line-height: 1.7;
+  color: var(--text-2);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary, #3b82f6) 7%, var(--card)), var(--card));
+  border: 1px solid color-mix(in srgb, var(--primary, #3b82f6) 25%, var(--border-light));
+  border-radius: 12px; padding: 11px 14px; margin-bottom: 14px;
+}
+.page-tip .pt-ico { display: flex; flex: none; margin-top: 2px; }
+.page-tip .pt-ico svg { width: 14px; height: 14px; color: var(--primary); }
+.page-tip > span:nth-child(2) { flex: 1; min-width: 0; }
+.page-tip .pt-close { display: flex; flex: none; margin-left: auto; cursor: pointer; color: var(--text-3); padding: 2px; }
+.page-tip .pt-close:hover { color: var(--text); }
+.page-tip .pt-close svg { width: 12px; height: 12px; }

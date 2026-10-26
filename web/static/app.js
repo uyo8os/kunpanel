@@ -188,6 +188,7 @@ const App = {
               <div class="topbar-title" id="page-title">概览</div>
             </div>
             <div class="topbar-right">
+              <button class="btn btn-icon btn-plain" id="btn-help" title="新手帮助 · 常见问题">${I("info")}</button>
               <button class="btn btn-icon btn-plain" id="btn-tasks" title="后台任务" style="position:relative">${I("stack")}<span id="tasks-badge" class="notify-badge" style="display:none"></span></button>
               <div class="dropdown" id="notify-dd">
                 <button class="btn btn-icon btn-plain" id="btn-notify" title="消息中心" style="position:relative">${I("inbox")}<span id="notify-badge" style="display:none"></span></button>
@@ -306,6 +307,7 @@ const App = {
       } catch (e) { /* 未登录等场景忽略 */ }
     };
     qs("#btn-tasks", app).onclick = () => taskCenter();
+    qs("#btn-help", app).onclick = () => helpCenter();
     refreshTasksBadge();
     setInterval(refreshTasksBadge, 30000);
     // 回到前台立即刷新一次,避免后台节流期间的陈旧角标
@@ -417,7 +419,25 @@ const App = {
     content.classList.remove("route-enter");
     void content.offsetWidth;
     content.classList.add("route-enter");
-    Promise.resolve(page.render(content)).catch(function(e) { toast(e.message || "渲染出错", "error"); });
+    const key2 = key;
+    Promise.resolve(page.render(content)).then(function() {
+      if (content.dataset.route !== key2) return;
+      // 每页一次性新手提示条(可关闭并记住;终端全屏页除外)
+      const TIPS = {
+        databases: "数据库用来存放网站数据:先安装 MySQL 等实例,再一键建库;备份、找回密码都在本页完成。",
+        apps: "应用商店 = 一键装软件:数据库、PHP 环境、常用程序都在这里,装好自动出现在左侧对应功能页。",
+        docker: "容器页管理服务器上的 Docker:看状态、限资源、查日志;不熟 Docker 也没关系,日常部署用「应用商店」就行。",
+        files: "文件页 = 服务器上的资源管理器:上传下载、在线编辑、压缩打包;网站程序就放在站点的根目录里。",
+        cron: "计划任务 = 让面板定时自动干活:每天备份数据库、每周清理日志,选好时间即可,不用写命令。",
+      };
+      const tipText = TIPS[key2];
+      if (!tipText || localStorage.getItem("kp_tip_" + key2)) return;
+      const bar = document.createElement("div");
+      bar.className = "page-tip";
+      bar.innerHTML = '<span class="pt-ico">' + I("info") + "</span><span>" + esc(tipText) + '</span><span class="pt-close" title="不再显示">' + I("close") + "</span>";
+      bar.querySelector(".pt-close").onclick = function() { try { localStorage.setItem("kp_tip_" + key2, "1"); } catch (e) {} bar.remove(); };
+      content.insertBefore(bar, content.firstChild);
+    }).catch(function(e) { toast(e.message || "渲染出错", "error"); });
   },
 
   /* ---------- 顶栏监控 ---------- */
