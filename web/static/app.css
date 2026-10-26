@@ -1249,14 +1249,40 @@ tr.fm-selected { background: var(--primary-light); }
 /* ================= 创建网站:类型卡片 ================= */
 .wz-types { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .wz-type-card {
-  border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer;
-  transition: all .15s; font-size: 12px; color: var(--text-3); line-height: 1.5;
+  position: relative; border: 1.5px solid var(--border-light); border-radius: 12px; padding: 14px;
+  cursor: pointer; transition: all .15s; font-size: 12px; color: var(--text-3); line-height: 1.55;
+  background: var(--bg-2);
 }
-.wz-type-card b { display: block; font-size: 13.5px; color: var(--text); margin-bottom: 4px; }
-.wz-type-card:hover { border-color: var(--primary); }
+.wz-type-card .wt-ico {
+  width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  color: #fff; margin-bottom: 9px;
+  background: linear-gradient(135deg, var(--ic1, #3b82f6), color-mix(in srgb, var(--ic1, #3b82f6) 52%, #1e293b));
+  box-shadow: 0 3px 9px color-mix(in srgb, var(--ic1, #3b82f6) 30%, transparent);
+}
+.wz-type-card .wt-ico svg { width: 18px; height: 18px; }
+.wz-type-card b { display: block; font-size: 14px; color: var(--text); margin-bottom: 3px; }
+.wz-type-card:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .wz-type-card.active { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 0 0 1px var(--primary); }
 .wz-type-card.active b { color: var(--primary); }
-@media (max-width: 640px) { .wz-types { grid-template-columns: 1fr; } }
+.wz-type-card.active::after {
+  content: ""; position: absolute; top: -1px; right: -1px; width: 0; height: 0;
+  border-top: 22px solid var(--primary); border-left: 22px solid transparent; border-radius: 0 10px 0 0;
+}
+.wz-sec { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; color: var(--text-2); margin: 18px 0 12px; }
+.wz-sec .ws-n {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: #fff;
+  font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none;
+}
+.wz-domain-row { display: grid; grid-template-columns: 1fr 120px; gap: 10px; }
+@media (max-width: 640px) { .wz-types { grid-template-columns: 1fr; } .wz-domain-row { grid-template-columns: 1fr; } }
+.wz-db-card { border: 1px solid var(--border-light); border-radius: 12px; background: var(--bg-2); padding: 13px 15px; }
+.wz-db-head { display: flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
+.wz-db-head .qi-icon { display: flex; }
+.wz-db-head .qi-icon svg { width: 20px; height: 20px; }
+.wz-db-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.wz-db-head b { font-size: 13.5px; display: block; }
+.wz-db-head .wz-db-sub { font-size: 11.5px; color: var(--text-3); display: block; }
+.wz-db-head .switch { margin-left: auto; flex: none; }
 
 /* ================= WAF 界面布局呼吸感优化 ================= */
 #waf-body { padding-top: 8px; }

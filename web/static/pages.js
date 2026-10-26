@@ -959,21 +959,28 @@ PAGES.websites = {
     var self = this;
     var m = modal({
       title: "创建网站", width: 640,
-      body: '<div class="wz-types">' +
-        '<div class="wz-type-card active" data-t="static"><b>静态站点</b><div>HTML/CSS/JS 纯静态网站</div></div>' +
-        '<div class="wz-type-card" data-t="php"><b>PHP 站点</b><div>WordPress/ThinkPHP 等 PHP 程序<br><span class="help" style="margin:0">需安装 PHP 运行时</span></div></div>' +
-        '<div class="wz-type-card" data-t="proxy"><b>反向代理</b><div>把域名转发到本机端口或任意外部服务<br><span class="help" style="margin:0">Go/Node/Java 应用常用</span></div></div></div>' +
-        '<div class="form-item required" style="margin-top:14px"><label>域名</label><input class="input" id="w-domain" placeholder="多个域名用空格分隔,如:demo.com www.demo.com">' +
-        '<div class="help">请先将域名解析到本服务器</div></div>' +
+      body: '<div class="wz-sec"><span class="ws-n">1</span>选择站点类型</div>' +
+        '<div class="wz-types">' +
+        '<div class="wz-type-card active" data-t="static"><span class="wt-ico" style="--ic1:#22c55e">' + I("globe") + '</span><b>静态站点</b><div>HTML/CSS/JS 纯静态页面,最快最省资源</div></div>' +
+        '<div class="wz-type-card" data-t="php"><span class="wt-ico" style="--ic1:#8b5cf6">' + I("file") + '</span><b>PHP 站点</b><div>WordPress/ThinkPHP 等程序<br><span class="help" style="margin:0">需安装 PHP 运行时</span></div></div>' +
+        '<div class="wz-type-card" data-t="proxy"><span class="wt-ico" style="--ic1:#06b6d4">' + I("shuffle") + '</span><b>反向代理</b><div>把域名转发到本机端口或外部服务<br><span class="help" style="margin:0">Go/Node/Java 常用</span></div></div></div>' +
+        '<div class="wz-sec"><span class="ws-n">2</span>域名与端口</div>' +
+        '<div class="form-item required" style="margin-top:0"><div class="wz-domain-row">' +
+        '<input class="input" id="w-domain" placeholder="域名,多个用空格分隔">' +
+        '<input class="input" id="w-port" type="number" value="80" title="监听端口"></div>' +
+        '<div class="help">请先把域名解析到本服务器;右侧为监听端口(默认 80)</div></div>' +
+        '<div class="wz-sec"><span class="ws-n">3</span>站点配置</div>' +
         '<div id="w-dyn"></div>' +
-        '<div class="form-item"><label>监听端口</label><input class="input" id="w-port" type="number" value="80" style="max-width:180px"></div>' +
-        '<div class="wz-collapse"><label class="radio-line"><input type="checkbox" id="w-db-on"> 同时创建数据库(MySQL/MariaDB)</label>' +
-        '<div id="w-db-fields" style="display:none;margin-top:8px">' +
+        '<div class="wz-sec"><span class="ws-n">4</span>可选项</div>' +
+        '<div class="wz-db-card"><div class="wz-db-head" id="w-db-head"><span class="qi-icon" style="color:#60a5fa">' + I("database") + '</span>' +
+        '<div><b>同时创建数据库</b><span class="wz-db-sub">自动建库,部署程序时直接使用(MySQL/MariaDB)</span></div>' +
+        '<span class="switch" id="w-db-sw"></span></div>' +
+        '<div id="w-db-fields" style="display:none;margin-top:12px">' +
         '<div class="form-item"><label>数据库实例</label><select class="select" id="w-db-inst"></select></div>' +
         '<div class="form-item"><label>数据库名</label><input class="input mono" id="w-db-name" placeholder="小写字母/数字/下划线"></div>' +
-        '<div class="help">库名与访问密码创建后可在数据库页面管理;需要先安装并运行 MySQL/MariaDB</div></div></div>' +
-        '<div class="form-item"><label>备注</label><input class="input" id="w-remark" placeholder="站点用途说明(可选)"></div>',
-      footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">创 建</button>',
+        '<div class="help">库名与访问密码创建后可在数据库页面管理;需先安装并运行 MySQL/MariaDB</div></div></div>' +
+        '<div class="form-item" style="margin-top:14px"><label>备注</label><input class="input" id="w-remark" placeholder="站点用途说明(可选)"></div>',
+      footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">' + I("plus") + ' 创 建</button>',
     });
     var curType = "static";
     var dyn = qs("#w-dyn", m.el);
@@ -1015,10 +1022,12 @@ PAGES.websites = {
     }
     qsa(".wz-type-card", m.el).forEach(function(c) { c.onclick = function() { renderDyn(c.getAttribute("data-t")); }; });
     renderDyn("static");
-    // 数据库可选
-    qs("#w-db-on", m.el).onchange = function() {
-      qs("#w-db-fields", m.el).style.display = this.checked ? "" : "none";
-      if (this.checked) {
+    // 数据库可选(滑块开关)
+    qs("#w-db-sw", m.el).onclick = function() {
+      this.classList.toggle("on");
+      var on = this.classList.contains("on");
+      qs("#w-db-fields", m.el).style.display = on ? "" : "none";
+      if (on) {
         api("/db/instances").then(function(list) {
           var sel = qs("#w-db-inst", m.el);
           if (!sel) return;
@@ -1050,7 +1059,7 @@ PAGES.websites = {
         if (pk && pk.value) body.php_key = pk.value;
       }
       // 可选数据库
-      if (qs("#w-db-on", m.el).checked) {
+      if (qs("#w-db-sw", m.el).classList.contains("on")) {
         var inst = qs("#w-db-inst", m.el).value;
         var dbname = qs("#w-db-name", m.el).value.trim();
         if (!inst) { toast("没有可用的数据库实例", "error"); return; }
