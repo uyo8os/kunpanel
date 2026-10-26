@@ -3,6 +3,24 @@
 所有重要变更都会记录在此文件中。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v2.94.0] - 2026-10-21
+
+### 重大:发布渠道迁移至 CNB / GitCode / Gitee 三平台,在线更新改为三源自动回退
+
+GitHub 仓库不再可用,本版本起发布与更新全面迁移:
+
+- **发布平台**:CNB(cnb.cool/kunge-nexa/kunpanel)、GitCode
+  (gitcode.com/NEXAB/kunpanel)、Gitee(gitee.com/NEXAB/kunpanel)三平台
+  同步发布,README 图文完整
+- **在线更新三源回退**:更新检查与安装包下载按 CNB → GitCode → Gitee
+  依次尝试,任一源可用即完成;安装包 SHA-256 校验与所选来源一致
+- **GitCode 附件方案**:GitCode release 附件 API 暂不开放,采用 dist 分支
+  仓库内文件(≤950KB 整文件,大文件 .partNNN 分块,contents API 匿名读取)
+- **一键安装脚本同步三源**:install.sh 下载段同样三源回退,Gitee/GitCode
+  新仓库受限期间自动落到 CNB
+- 更新重启改为参数列表直连 systemd/OpenRC(移除 shell 拼接)
+- GitHub 更新源与 gh-proxy 加速逻辑移除
+
 ## [v2.93.0] - 2026-10-21
 
 ### 优化:全站新手友好改造——小白一看就懂,新手跟着就能用

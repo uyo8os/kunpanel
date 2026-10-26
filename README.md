@@ -6,7 +6,7 @@
 
 **轻量级服务器运维管理面板 —— Go 单二进制,开箱即用**
 
-[![](https://img.shields.io/badge/版本-v2.93.0-3b82f6?style=flat-square)](https://github.com/kungec/kunpanel/releases)
+[![](https://img.shields.io/badge/版本-v2.94.0-3b82f6?style=flat-square)](https://gitee.com/NEXAB/kunpanel/releases)
 [![](https://img.shields.io/badge/Go-1.27+-00ADD8?style=flat-square)](https://golang.org)
 [![](https://img.shields.io/badge/平台-Linux%20%7C%20Windows-lightgrey?style=flat-square)](./README.md)
 [![](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
@@ -53,11 +53,17 @@
 x86_64 / aarch64 / armv7 三架构,自动识别 systemd / OpenRC / SysV:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kungec/kunpanel/main/scripts/install.sh | bash
+curl -fsSL 'https://cnb.cool/kunge-nexa/kunpanel/-/git/raw/main/scripts/install.sh' -o kp-install.sh && bash kp-install.sh
+```
+
+备用源(脚本地址替换为下者即可):
+
+```bash
+curl -fsSL 'https://gitee.com/NEXAB/kunpanel/raw/main/scripts/install.sh' -o kp-install.sh && bash kp-install.sh
 ```
 
 安装完成自动输出:**随机端口 + 随机安全入口 + 随机管理员密码**。
-国内服务器安装与「在线更新」均内置 GitHub 加速兜底,不必科学上网。
+下载全程三源自动回退(CNB → GitCode → Gitee),面板「在线更新」同样三源回退,国内服务器无需科学上网。
 
 <details>
 <summary>📦 安装参数与卸载</summary>
@@ -75,7 +81,7 @@ bash install.sh --uninstall              # 卸载
 
 ### Windows
 
-下载 [Release](https://github.com/kungec/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
+下载 [Release](https://gitee.com/NEXAB/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
 解压后**右键以管理员身份运行 `install.bat`** —— 自动注册 Windows 服务、放行防火墙并输出访问地址。
 
 ### 🐳 Docker
@@ -156,7 +162,7 @@ docker run -d --name kunpanel -p 20000:20000 \
 ## 🛠 从源码构建
 
 ```bash
-git clone https://github.com/kungec/kunpanel.git && cd kunpanel
+git clone https://gitee.com/NEXAB/kunpanel.git && cd kunpanel
 bash build.sh v2.78.1     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
 ```
 
