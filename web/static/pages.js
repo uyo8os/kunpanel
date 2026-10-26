@@ -51,7 +51,7 @@ PAGES.dashboard = {
     var guideSteps = [
       { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "应用商店、PHP、数据库都依赖它,点一下自动装", go: "docker", btn: "去安装" },
       { no: 2, done: sites.length > 0, title: "创建第一个网站", desc: "填个域名就行,支持静态页面、PHP 程序和反向代理", go: "websites", btn: "去建站" },
-      { no: 3, done: dbs.length > 0, title: "安装数据库或应用", desc: "MySQL、WordPress 等常用软件一键安装", go: "apps", btn: "去商店" },
+      { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、WordPress 等常用软件一键安装", go: "apps", btn: "去商店" },
       { no: 4, done: !!((st.entrance && st.entrance !== "-") || st.ssl || st.totp_enabled), title: "加固面板安全", desc: "开启安全入口 / HTTPS / 两步验证,任一项即可", go: "settings", btn: "去设置" },
     ];
     var guideDone = guideSteps.filter(function(x) { return x.done; }).length;
@@ -79,7 +79,7 @@ PAGES.dashboard = {
         '<div class="mon-bar"><i class="' + pctCls + '"' + (liveId ? ' id="' + liveId + '-bar"' : "") + ' style="width:' + Math.min(100, pct) + '%"></i></div></div>';
     }
     var diskRows = (s.disks || []).slice(0, 3).map(function(dk2, i) {
-      return bar("磁盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used) + " / " + fmtBytes(dk2.total), "", i === 0 ? "live-disk" : "");
+      return bar(dk2.path === "/" ? "系统盘 /" : "磁盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used) + " / " + fmtBytes(dk2.total), "", i === 0 ? "live-disk" : "");
     }).join("");
 
     var html = guideHtml + '<div class="kpi-strip">' +
@@ -254,7 +254,7 @@ PAGES.websites = {
             <button class="btn btn-sm btn-plain" id="site-ssl">${I("key")} SSL 证书</button><button class="btn btn-sm btn-plain" id="site-stats">${I("pulse")} 访问统计</button><button class="btn btn-sm btn-danger-plain" id="site-batch-del" style="display:none">${I("trash")} 批量删除</button><button class="btn btn-sm btn-primary" id="btn-add-site">${I("plus")} 创建网站</button></div></div>
         <div id="site-table">${tableHTML([
           { title: '<input type="checkbox" id="site-sel-all" title="全选">', width: "36px", render: (r) => '<input type="checkbox" class="site-sel" data-id="' + r.id + '">' },
-          { title: "域名", render: (r) => '<span class="ellipsis" title="' + esc(r.domain) + '">' + esc(r.domain) + "</span>" },
+          { title: "域名", width: "220px", render: (r) => '<span class="ellipsis" title="' + esc(r.domain) + '">' + esc(r.domain) + "</span>" },
           { title: "类型", width: "100px", render: (r) => (r.type === "proxy" ? '<span class="tag tag-primary">反向代理</span>' : r.type === "php" ? '<span class="tag tag-purple">PHP 站点</span>' : '<span class="tag tag-success">静态站点</span>') },
           { title: "端口", width: "70px", render: (r) => r.port },
           { title: "根目录 / 目标", width: "300px", render: (r) => {
