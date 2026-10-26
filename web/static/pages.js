@@ -72,14 +72,22 @@ PAGES.dashboard = {
         }).join("") + "</div></div>";
     }
 
-    function bar(label, pct, sub, color, liveId) {
+    // 环形进度(首页监控可视化;r=26,周长 163.36)
+    var RING_C = 163.36;
+    function ring(label, pct, sub, liveId) {
+      pct = Math.max(0, Math.min(100, pct));
       var pctCls = pct >= 90 ? "danger" : pct >= 75 ? "warn" : "";
-      return '<div class="mon-row"><div class="mon-head"><span>' + label + (liveId ? ' <b id="' + liveId + '">' + pct.toFixed(1) + "%</b>" : "<b>" + pct.toFixed(1) + "%</b>") + "</span>" +
-        '<span class="mon-sub">' + sub + "</span></div>" +
-        '<div class="mon-bar"><i class="' + pctCls + '"' + (liveId ? ' id="' + liveId + '-bar"' : "") + ' style="width:' + Math.min(100, pct) + '%"></i></div></div>';
+      var off = (RING_C * (1 - pct / 100)).toFixed(1);
+      return '<div class="ring-item"><div class="ring-box">' +
+        '<svg class="ring" viewBox="0 0 64 64">' +
+        '<circle class="ring-bg" cx="32" cy="32" r="26"></circle>' +
+        '<circle class="ring-fg ' + pctCls + '"' + (liveId ? ' id="' + liveId + '-ring"' : "") + ' cx="32" cy="32" r="26" stroke-dasharray="' + RING_C + '" stroke-dashoffset="' + off + '"></circle></svg>' +
+        '<div class="ring-val" ' + (liveId ? 'id="' + liveId + '"' : "") + ">" + pct.toFixed(0) + '<i>%</i></div></div>' +
+        '<div class="ring-label">' + label + "</div>" +
+        '<div class="ring-sub">' + sub + "</div></div>";
     }
-    var diskRows = (s.disks || []).slice(0, 3).map(function(dk2, i) {
-      return bar(dk2.path === "/" ? "系统盘 /" : "磁盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used) + " / " + fmtBytes(dk2.total), "", i === 0 ? "live-disk" : "");
+    var diskRings = (s.disks || []).slice(0, 2).map(function(dk2, i) {
+      return ring(dk2.path === "/" ? "系统盘" : "盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used), i === 0 ? "live-disk" : "");
     }).join("");
 
     var html = '<div class="dash-wrap">' + guideHtml + '<div class="kpi-strip">' +
@@ -95,12 +103,13 @@ PAGES.dashboard = {
       '<div class="card card-hover"><div class="card-title">系统监控<span class="mon-net">' +
       '<span class="net-line down">' + I("netDown") + ' <b id="live-rx">' + fmtSpeed(s.net_rx_speed) + '</b></span>' +
       '<span class="net-line up">' + I("netUp") + ' <b id="live-tx">' + fmtSpeed(s.net_tx_speed) + "</b></span></span></div>" +
-      bar("CPU 使用率", cpuPct, (s.cpu_cores || "-") + " 核 · " + esc((s.cpu_model || "-").split("@")[0].trim().slice(0, 24)), "", "live-cpu") +
-      bar("内存使用", memPct, fmtBytes(s.mem_used) + " / " + fmtBytes(s.mem_total), "", "live-mem") +
-      (hasSwap ? bar("Swap 交换分区", swapPct, fmtBytes(s.swap_used) + " / " + fmtBytes(s.swap_total), "", "live-swap") : "") +
-      bar("系统负载", Math.min(100, (s.load1 / Math.max(1, s.cpu_cores)) * 100), "1/5/15 分钟: " + s.load1 + " / " + s.load5 + " / " + s.load15, "", "live-load") +
-      diskRows +
-      "</div>" +
+      '<div class="ring-grid">' +
+      ring("CPU", cpuPct, (s.cpu_cores || "-") + " 核 · " + esc((s.cpu_model || "-").split("@")[0].trim().slice(0, 18)), "live-cpu") +
+      ring("内存", memPct, fmtBytes(s.mem_used) + " / " + fmtBytes(s.mem_total), "live-mem") +
+      (hasSwap ? ring("Swap", swapPct, fmtBytes(s.swap_used) + " / " + fmtBytes(s.swap_total), "live-swap") : "") +
+      ring("负载", Math.min(100, (s.load1 / Math.max(1, s.cpu_cores)) * 100), "1/5/15: " + s.load1 + " / " + s.load5 + " / " + s.load15, "live-load") +
+      diskRings +
+      "</div></div>" +
 
       '<div class="card card-hover"><div class="card-title">服务器信息</div><table class="info-table">' +
       "<tr><td>主机名</td><td>" + esc(s.hostname) + "</td></tr>" +
@@ -203,10 +212,11 @@ PAGES.dashboard = {
         [["live-cpu", s2.cpu_percent || 0], ["live-mem", s2.mem_percent || 0], ["live-swap", s2.swap_percent || 0],
          ["live-load", Math.min(100, (s2.load1 / Math.max(1, s2.cpu_cores)) * 100)],
          ["live-disk", s2.disks && s2.disks[0] ? s2.disks[0].usage_percent : 0]].forEach(function(pr) {
-          var b = document.getElementById(pr[0] + "-bar");
-          if (b) {
-            b.style.width = Math.min(100, pr[1]) + "%";
-            b.className = pr[1] >= 90 ? "danger" : pr[1] >= 75 ? "warn" : "";
+          var c = document.getElementById(pr[0] + "-ring");
+          if (c) {
+            var pct = Math.max(0, Math.min(100, pr[1] || 0));
+            c.style.strokeDashoffset = (163.36 * (1 - pct / 100)).toFixed(1);
+            c.setAttribute("class", "ring-fg " + (pct >= 90 ? "danger" : pct >= 75 ? "warn" : ""));
           }
         });
       } catch (e) {}
