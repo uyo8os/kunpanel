@@ -31,7 +31,7 @@ PAGES.dashboard = {
     ups.forEach(function(m) { if (m.enabled && !m.up) upDown++; });
 
     function kpi(icon, color, num, label, go) {
-      return '<div class="card kpi-card card-hover" data-go="' + go + '"><span class="kpi-ico" style="color:' + color + '">' + I(icon) + "</span>" +
+      return '<div class="card kpi-card card-hover" data-go="' + go + '"><span class="kpi-ico" style="--ic1:' + color + '">' + I(icon) + "</span>" +
         '<div class="kpi-num"><b>' + num + "</b><span>" + label + "</span></div></div>";
     }
     var expiring = 0;
@@ -82,7 +82,7 @@ PAGES.dashboard = {
       return bar(dk2.path === "/" ? "系统盘 /" : "磁盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used) + " / " + fmtBytes(dk2.total), "", i === 0 ? "live-disk" : "");
     }).join("");
 
-    var html = guideHtml + '<div class="kpi-strip">' +
+    var html = '<div class="dash-wrap">' + guideHtml + '<div class="kpi-strip">' +
       kpi("globe", "#38bdf8", sites.length, "网站", "websites") +
       kpi("database", "#60a5fa", dbTotal, "数据库", "databases") +
       kpi("cube", "#0ea5e9", dk.running ? dk.runningCount + "/" + dk.containers : "-", "容器", "docker") +
@@ -127,7 +127,7 @@ PAGES.dashboard = {
        ["clock", "计划任务", "cron", "#fb923c"], ["folder", "文件", "files", "#4ade80"], ["shield", "安全中心", "securityhub", "#f87171"],
        ["pulse", "监控中心", "monitorhub", "#f59e0b"], ["terminal", "终端", "terminal", "#64748b"]]
         .map(function(x) { return '<div class="quick-item" data-go="' + x[2] + '"><span class="qi-icon" style="color:' + x[3] + '">' + I(x[0]) + "</span><span>" + x[1] + "</span></div>"; }).join("") +
-      "</div></div></div>";
+      "</div></div></div></div>";
 
     el.innerHTML = html;
     el.querySelectorAll("[data-go]").forEach(function(n) {
