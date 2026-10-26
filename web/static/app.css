@@ -257,8 +257,10 @@ html[data-theme="dark"] .topbar { background: rgba(20,23,28,.88); }
 .monitor-chip {
   display: flex; gap: 12px; font-size: 11.5px; color: var(--text-3);
   background: var(--bg); border: 1px solid var(--border-light);
-  border-radius: 20px; padding: 4px 14px; white-space: nowrap;
+  border-radius: 20px; padding: 4px 8px; white-space: nowrap;
 }
+.monitor-chip > span { padding: 1px 7px; border-radius: 12px; transition: background .2s; }
+.monitor-chip > span:hover { background: var(--primary-light); }
 .monitor-chip b { color: var(--text); font-weight: 600; }
 .user-chip {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
@@ -357,7 +359,13 @@ html[data-theme="dark"] .dd-header { background: #232936; }
 }
 .quick-item:hover { border-color: var(--primary); background: var(--card); box-shadow: 0 6px 16px var(--primary-glow); transform: translateY(-3px); }
 .quick-item:active { transform: translateY(0); }
-.quick-item .qi-icon svg { width: 24px; height: 24px; }
+.quick-item .qi-icon {
+  width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, currentColor 13%, transparent);
+  transition: transform .18s cubic-bezier(.22,.61,.36,1), background .18s;
+}
+.quick-item .qi-icon svg { width: 22px; height: 22px; }
+.quick-item:hover .qi-icon { transform: scale(1.1); }
 .quick-item span:last-child { font-size: 12px; color: var(--text-2); white-space: nowrap; }
 
 .icon-box {
@@ -911,7 +919,7 @@ tr.fm-selected { background: var(--primary-light); }
 .mon-sub { font-size: 11.5px; color: var(--text-3); }
 .mon-bar { height: 12px; background: var(--bg-2); border-radius: 6px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(15,23,42,.05); }
 .mon-bar i {
-  display: block; height: 100%; border-radius: 6px; position: relative;
+  display: block; height: 100%; border-radius: 6px; position: relative; min-width: 6px;
   background: linear-gradient(90deg, #3b82f6, #6ea8ff);
   transition: width .6s cubic-bezier(.22,.61,.36,1);
 }
