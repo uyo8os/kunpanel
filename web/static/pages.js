@@ -72,16 +72,20 @@ PAGES.dashboard = {
         }).join("") + "</div></div>";
     }
 
-    // 环形进度(首页监控可视化;r=26,周长 163.36)
+    // 环形进度(首页监控可视化;r=26,周长 163.36;渐变描边)
     var RING_C = 163.36;
+    var ringSeq = 0;
     function ring(label, pct, sub, liveId) {
       pct = Math.max(0, Math.min(100, pct));
       var pctCls = pct >= 90 ? "danger" : pct >= 75 ? "warn" : "";
       var off = (RING_C * (1 - pct / 100)).toFixed(1);
+      var gid = "rg" + (ringSeq++);
       return '<div class="ring-item"><div class="ring-box">' +
         '<svg class="ring" viewBox="0 0 64 64">' +
+        '<defs><linearGradient id="' + gid + '" x1="0%" y1="0%" x2="100%" y2="100%">' +
+        '<stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#22d3ee"/></linearGradient></defs>' +
         '<circle class="ring-bg" cx="32" cy="32" r="26"></circle>' +
-        '<circle class="ring-fg ' + pctCls + '"' + (liveId ? ' id="' + liveId + '-ring"' : "") + ' cx="32" cy="32" r="26" stroke-dasharray="' + RING_C + '" stroke-dashoffset="' + off + '"></circle></svg>' +
+        '<circle class="ring-fg ' + pctCls + '"' + (liveId ? ' id="' + liveId + '-ring"' : "") + ' cx="32" cy="32" r="26" stroke="url(#' + gid + ')" stroke-dasharray="' + RING_C + '" stroke-dashoffset="' + off + '"></circle></svg>' +
         '<div class="ring-val" ' + (liveId ? 'id="' + liveId + '"' : "") + ">" + pct.toFixed(0) + '<i>%</i></div></div>' +
         '<div class="ring-label">' + label + "</div>" +
         '<div class="ring-sub">' + sub + "</div></div>";
@@ -99,8 +103,7 @@ PAGES.dashboard = {
       kpi("pulse", upDown ? "#f56c6c" : "#4ade80", ups.length ? (ups.length - upDown) + "/" + ups.length : "-", "拨测正常", "monitorhub") +
       "</div>" +
 
-      '<div class="dash-grid" style="margin-top:14px">' +
-      '<div class="card card-hover"><div class="card-title">系统监控<span class="mon-net">' +
+      '<div class="card card-hover card-mon" style="margin-top:14px"><div class="card-title">系统监控<span class="mon-live">实时</span><span class="mon-net">' +
       '<span class="net-line down">' + I("netDown") + ' <b id="live-rx">' + fmtSpeed(s.net_rx_speed) + '</b></span>' +
       '<span class="net-line up">' + I("netUp") + ' <b id="live-tx">' + fmtSpeed(s.net_tx_speed) + "</b></span></span></div>" +
       '<div class="ring-grid">' +
@@ -111,6 +114,7 @@ PAGES.dashboard = {
       diskRings +
       "</div></div>" +
 
+      '<div class="grid-2" style="margin-top:14px">' +
       '<div class="card card-hover"><div class="card-title">服务器信息</div><table class="info-table">' +
       "<tr><td>主机名</td><td>" + esc(s.hostname) + "</td></tr>" +
       "<tr><td>操作系统</td><td>" + esc(s.platform) + " " + esc(s.platform_v) + " (" + esc(s.os) + ")</td></tr>" +
@@ -118,7 +122,7 @@ PAGES.dashboard = {
       "<tr><td>IP 地址</td><td><span class=\"help\">内网</span> <span class=\"mono\">" + esc(s.ip) + "</span>" +
       (s.public_ip ? ' &nbsp;<span class="help">公网</span> <b class="mono">' + esc(s.public_ip) + "</b>" : ' &nbsp;<span class="help">公网获取中…</span>') + "</td></tr>" +
       '<tr><td>累计流量</td><td>收 ' + fmtBytes(s.net_rx_total) + " / 发 " + fmtBytes(s.net_tx_total) + "</td></tr>" +
-      "</table></div></div>" +
+      "</table></div>" +
 
       '<div class="grid-2" style="margin-top:14px">' +
       '<div class="card card-hover"><div class="card-title">面板信息</div><table class="info-table">' +
@@ -130,13 +134,14 @@ PAGES.dashboard = {
         : '<span class="tag tag-warning">未安装 Docker</span>') + "</td></tr>" +
       '<tr><td id="ssl-alert-td">证书状态</td><td id="ssl-alert-box"><span class="help">检查中...</span></td></tr>' +
       "</table></div>" +
+      '</div>' +
 
       '<div class="card card-hover"><div class="card-title">快捷入口</div><div class="quick-grid">' +
       [["globe", "网站", "websites", "#38bdf8"], ["store", "应用商店", "apps", "#a78bfa"], ["cube", "容器", "docker", "#0ea5e9"],
        ["clock", "计划任务", "cron", "#fb923c"], ["folder", "文件", "files", "#4ade80"], ["shield", "安全中心", "securityhub", "#f87171"],
        ["pulse", "监控中心", "monitorhub", "#f59e0b"], ["terminal", "终端", "terminal", "#64748b"]]
         .map(function(x) { return '<div class="quick-item" data-go="' + x[2] + '"><span class="qi-icon" style="color:' + x[3] + '">' + I(x[0]) + "</span><span>" + x[1] + "</span></div>"; }).join("") +
-      "</div></div></div></div>";
+      "</div></div></div>";
 
     el.innerHTML = html;
     el.querySelectorAll("[data-go]").forEach(function(n) {

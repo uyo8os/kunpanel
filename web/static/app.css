@@ -919,13 +919,13 @@ tr.fm-selected { background: var(--primary-light); }
 .mon-sub { font-size: 11.5px; color: var(--text-3); }
 
 /* ---- 概览圆环仪表 ---- */
-.ring-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.ring-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; padding: 6px 4px 2px; }
 .ring-item { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
-.ring-box { position: relative; width: 76px; height: 76px; }
-.ring { width: 76px; height: 76px; transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: var(--border); stroke-width: 6.5; }
+.ring-box { position: relative; width: 104px; height: 104px; }
+.ring { width: 104px; height: 104px; transform: rotate(-90deg); }
+.ring-bg { fill: none; stroke: var(--border); stroke-width: 5.5; }
 .ring-fg {
-  fill: none; stroke: var(--primary, #3b82f6); stroke-width: 6.5; stroke-linecap: round;
+  fill: none; stroke: var(--primary, #3b82f6); stroke-width: 5.5; stroke-linecap: round;
   transition: stroke-dashoffset .6s cubic-bezier(.22,.61,.36,1), stroke .3s;
   filter: drop-shadow(0 2px 5px color-mix(in srgb, var(--primary, #3b82f6) 35%, transparent));
 }
@@ -933,15 +933,14 @@ tr.fm-selected { background: var(--primary-light); }
 .ring-fg.danger { stroke: #ef4444; filter: drop-shadow(0 2px 5px rgba(239,68,68,.35)); }
 .ring-val {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+  font-size: 19px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: -.02em;
 }
-.ring-val i { font-style: normal; font-size: 9.5px; font-weight: 600; color: var(--text-3); margin: 8px 0 0 1px; }
-.ring-label { font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-top: 7px; }
+.ring-val i { font-style: normal; font-size: 10.5px; font-weight: 600; color: var(--text-3); margin: 10px 0 0 1px; }
+.ring-label { font-size: 13.5px; font-weight: 600; color: var(--text-2); margin-top: 8px; }
 .ring-sub {
-  font-size: 10.5px; color: var(--text-3); margin-top: 2px; max-width: 120px; line-height: 1.5;
+  font-size: 11px; color: var(--text-3); margin-top: 3px; max-width: 150px; line-height: 1.5;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-@media (max-width: 1200px) { .ring-grid { grid-template-columns: repeat(5, 1fr); } }
 @media (max-width: 900px) { .ring-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 560px) { .ring-grid { grid-template-columns: repeat(2, 1fr); } }
 .mon-net { display: flex; gap: 8px; margin-left: auto; font-size: 12px; }
