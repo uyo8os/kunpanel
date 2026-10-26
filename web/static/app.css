@@ -1557,6 +1557,23 @@ tr.fm-selected { background: var(--primary-light); }
 .hc-a { padding: 0 14px 12px; font-size: 12.5px; line-height: 1.85; color: var(--text-2); }
 .hc-a .hc-go { color: var(--primary); font-weight: 500; white-space: nowrap; }
 
+/* ================= HTTPS 弹窗状态卡 ================= */
+.ssl-head-card {
+  display: flex; align-items: center; gap: 13px; padding: 14px 16px; border-radius: 12px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary, #3b82f6) 6%, var(--card)), var(--card));
+  border: 1px solid var(--border-light);
+}
+.ssl-head-ico {
+  width: 44px; height: 44px; border-radius: 12px; flex: none; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--ic1, #3b82f6), color-mix(in srgb, var(--ic1, #3b82f6) 52%, #1e293b));
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ic1, #3b82f6) 30%, transparent);
+}
+.ssl-head-ico svg { width: 20px; height: 20px; }
+.ssl-head-txt { min-width: 0; }
+.ssl-head-txt b { display: block; font-size: 14px; }
+.ssl-head-txt span { font-size: 12px; color: var(--text-3); }
+
 /* ================= 每页一次性新手提示条 ================= */
 .page-tip {
   display: flex; align-items: flex-start; gap: 9px; font-size: 12.5px; line-height: 1.7;

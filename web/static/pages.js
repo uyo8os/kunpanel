@@ -1702,40 +1702,40 @@ PAGES.websites = {
     } catch (e) {}
     const mainDomain = site.domain.split(" ")[0];
     const m = modal({
-      title: "HTTPS 设置 · " + mainDomain, width: 600,
+      title: "HTTPS 设置 · " + mainDomain, width: 660,
       body: `
-        <div class="form-item"><label>绑定状态</label>
-          <div>${site.ssl_cert_id ? '<span class="tag tag-success">已启用 HTTPS</span>' : '<span class="tag tag-info">未启用</span>'}</div></div>
-        <div class="form-item"><label>当前使用的证书</label>
-          <select class="select" id="ssl-cert"><option value="">不启用 HTTPS</option>
-            ${certs.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === site.ssl_cert_id ? " selected" : "") + ">" + esc(c.name) + (c.expire ? "(到期 " + esc(c.expire) + (c.acme ? " · LE" : "") + (c.profile === "shortlived" ? " · 短期" : "") + ")" : "") + "</option>").join("")}
-          </select>
-          <div style="margin-top:6px"><button class="btn btn-xs btn-danger-plain" id="ssl-cert-del">删除选中的证书</button>
-          <span class="help" style="margin:0 0 0 8px">在上方列表选中要删除的证书再点删除;文件一并移除,不可恢复</span></div>
-          <div class="help" id="ssl-cert-count">已有 ${certs.length} 张证书;LE 证书剩余不足 30 天自动续期(IP 短期证书不足 3 天自动续期)</div></div>
+        <div class="ssl-head-card">
+          <span class="ssl-head-ico" style="--ic1:${site.ssl_cert_id ? "#22c55e" : "#94a3b8"}">${I("key")}</span>
+          <div class="ssl-head-txt"><b>${site.ssl_cert_id ? "HTTPS 已启用" : "HTTPS 未启用"}</b>
+          <span>${esc(mainDomain)} · ${site.ssl_cert_id ? "更换证书或调整下方选项后保存" : "选择下方任一方式开启 HTTPS"}</span></div>
+        </div>
+        <div class="wz-types" style="margin:14px 0 4px">
+          <div class="wz-type-card ssl-tab active" data-ssl-tab="acme"><span class="wt-ico" style="--ic1:#22c55e">${I("bolt")}</span><b>免费证书</b><div>Let's Encrypt 自动续期<span class="help" style="margin:0">推荐</span></div></div>
+          <div class="wz-type-card ssl-tab" data-ssl-tab="upload"><span class="wt-ico" style="--ic1:#8b5cf6">${I("upload")}</span><b>自有证书</b><div>商业证书上传<span class="help" style="margin:0">PEM 格式</span></div></div>
+          <div class="wz-type-card ssl-tab" data-ssl-tab="selfsign"><span class="wt-ico" style="--ic1:#f59e0b">${I("key")}</span><b>自签证书</b><div>本地测试用<span class="help" style="margin:0">浏览器会提示不安全</span></div></div>
+        </div>
 
-        <div class="waf-set-sec" style="padding:14px 16px 12px"><div class="waf-sec-head">${I("bolt")}免费证书(ACME)<span class="tag tag-success" style="margin-left:2px">推荐</span></div>
-          <div class="settings-hint" style="margin:0 0 10px">自动申请、自动续期;Let's Encrypt 适合绝大多数网站;ZeroSSL 填申请邮箱即可自动注册(自动获取 EAB);Google Trust Services 需在其控制台手动获取 EAB 凭据</div>
-          ${/^\d{1,3}(\.\d{1,3}){3}$/.test(mainDomain) ? '<div class="help" style="margin:-4px 0 10px;color:var(--warn,#f59e0b)">当前站点绑定的是 IP 地址:将自动申请 Let\'s Encrypt IP 证书(shortlived 档案,有效期约 6 天,到期前 3 天自动续期;需该 IP 的 80 端口对外开放)</div>' : ""}
-          <div class="form-item"><label>证书服务商(CA)</label>
-            <select class="select" id="acme-provider" style="max-width:320px"></select>
-            <div class="help" id="acme-provider-hint"></div></div>
-          <div id="acme-eab-row" style="display:none">
-            <div class="form-item"><label>EAB KeyID</label><input class="input" id="acme-eab-kid" value="${esc(acmeCfg.eab_key_id || "")}" placeholder="在 CA 官网获取" style="max-width:320px"></div>
-            <div class="form-item"><label>EAB HMAC</label><input class="input" id="acme-eab-hmac" value="${esc(acmeCfg.eab_hmac || "")}" placeholder="在 CA 官网获取" style="max-width:320px"></div>
-          </div>
-          <div class="form-item"><label>申请邮箱</label>
-            <input class="input" id="acme-email" value="${esc(acmeCfg.email || "")}" placeholder="用于到期提醒,如 me@example.com"></div>
+        <div id="ssl-tab-acme">
+        <div class="wz-sec"><span class="ws-n">1</span>申请免费证书(Let's Encrypt / ZeroSSL / Google)</div>
+        <div class="settings-hint" style="margin:0 0 10px">自动申请、自动续期;Let's Encrypt 适合绝大多数网站;ZeroSSL 填申请邮箱即可自动注册(自动获取 EAB);Google Trust Services 需在其控制台手动获取 EAB 凭据</div>
+        ${/^\d{1,3}(\.\d{1,3}){3}$/.test(mainDomain) ? '<div class="help" style="margin:-4px 0 10px;color:var(--warn,#f59e0b)">当前站点绑定的是 IP 地址:将自动申请 Let\'s Encrypt IP 证书(shortlived 档案,有效期约 6 天,到期前 3 天自动续期;需该 IP 的 80 端口对外开放)</div>' : ""}
+        <div class="form-item"><label>证书服务商(CA)</label>
+          <select class="select" id="acme-provider" style="max-width:320px"></select>
+          <div class="help" id="acme-provider-hint"></div></div>
+        <div class="form-item"><label>申请邮箱</label>
+          <input class="input" id="acme-email" value="${esc(acmeCfg.email || "")}" placeholder="用于到期提醒,如 me@example.com"></div>
+        <div class="form-item"><label>申请域名(站点绑定的域名,勾选要签入证书的)</label>
+          <div id="acme-domain-list" style="display:flex;flex-direction:column;gap:2px"></div>
+          <label class="radio-line" style="margin-top:6px"><input type="checkbox" id="acme-wildcard"> 自动组合泛域名(*.主域:一张证书覆盖主域和所有子域名,只需一条 CNAME/TXT;HTTP 验证下勾选会自动切换到 DNS API)</label>
+          <div class="help" id="acme-domain-plan"></div></div>
+        <details class="hc-item" style="margin:10px 0"><summary>高级选项(验证方式 / DNS API / 测试环境)</summary>
+          <div class="hc-a">
           <div class="form-item"><label>验证方式</label>
             <select class="select" id="acme-method" style="max-width:320px">
               <option value="http">HTTP 文件验证(推荐,需域名解析到本服务器且 80 端口可达)</option>
               <option value="dnsapi">DNS API 自动验证(支持通配符,TXT 记录自动添加,推荐批量/通配符场景)</option>
               <option value="dns">DNS 手动验证(支持通配符/无法开放 80 端口的场景,签发时需手动添加 TXT 记录)</option>
             </select></div>
-          <div class="form-item"><label>申请域名(站点绑定的域名,勾选要签入证书的)</label>
-            <div id="acme-domain-list" style="display:flex;flex-direction:column;gap:2px"></div>
-            <label class="radio-line" style="margin-top:6px"><input type="checkbox" id="acme-wildcard"> 自动组合泛域名(*.主域:一张证书覆盖主域和所有子域名,只需一条 CNAME/TXT;HTTP 验证下勾选会自动切换到 DNS API)</label>
-            <div class="help" id="acme-domain-plan"></div></div>
           <div id="acme-dnsapi-row" style="display:none">
             <div class="form-item"><label>DNS 服务商</label>
               <select class="select" id="acme-dnsapi-provider" style="max-width:320px"></select>
@@ -1749,25 +1749,50 @@ PAGES.websites = {
               <input class="input" id="acme-alias" placeholder="可留空;面板自动跟随主域 CNAME" style="max-width:320px">
               <div class="help">可选:把主域挑战名(_acme-challenge.主域名)CNAME 到你控制的自定义记录,TXT 记录统一维护在该记录下;面板会自动跟随 CNAME 并提示 TXT 应加在哪条记录上</div></div>
           </div>
+          <div id="acme-eab-row" style="display:none">
+            <div class="form-item"><label>EAB KeyID</label><input class="input" id="acme-eab-kid" value="${esc(acmeCfg.eab_key_id || "")}" placeholder="在 CA 官网获取" style="max-width:320px"></div>
+            <div class="form-item"><label>EAB HMAC</label><input class="input" id="acme-eab-hmac" value="${esc(acmeCfg.eab_hmac || "")}" placeholder="在 CA 官网获取" style="max-width:320px"></div>
+          </div>
           <label class="radio-line"><input type="checkbox" id="acme-staging" ${acmeCfg.staging ? "checked" : ""}> 使用测试环境(staging,不限频但浏览器不信任,验证流程用)</label>
-          <div style="margin-top:10px"><button class="btn btn-sm btn-primary" id="ssl-acme-issue">${I("bolt")} 申请证书并启用 HTTPS</button></div></div>
+          </div></details>
+        <div style="margin-top:12px"><button class="btn btn-primary" id="ssl-acme-issue">${I("bolt")} 申请证书并启用 HTTPS</button></div></div>
 
-        <div class="waf-set-sec" style="padding:14px 16px 12px;margin-top:12px"><div class="waf-sec-head">${I("upload")}自有证书(商业证书)</div>
-          <div class="settings-hint" style="margin:0 0 10px">已购买的商业证书(如阿里云/腾讯云/StormBytes 签发):下载 PEM 格式后,选择文件或直接粘贴内容</div>
-          <div style="margin-bottom:8px"><button class="btn btn-sm btn-plain" id="ssl-pick-file">${I("upload")} 选择证书文件</button>
-            <span class="help" style="margin:0 0 0 8px">支持 .pem / .crt / .key / .txt,自动区分证书与私钥</span></div>
-          <textarea class="textarea" id="ssl-cert-pem" rows="3" placeholder="证书内容(BEGIN CERTIFICATE ...)"></textarea>
-          <textarea class="textarea" id="ssl-key-pem" rows="3" placeholder="私钥内容(BEGIN PRIVATE KEY ...)" style="margin-top:6px"></textarea>
-          <div style="margin-top:10px"><button class="btn btn-sm btn-primary" id="ssl-upload">${I("bolt")} 保存并启用 HTTPS</button></div></div>
+        <div id="ssl-tab-upload" style="display:none">
+        <div class="wz-sec"><span class="ws-n">1</span>上传自有证书(商业证书)</div>
+        <div class="settings-hint" style="margin:0 0 10px">已购买的商业证书(如阿里云/腾讯云/StormBytes 签发):下载 PEM 格式后,选择文件或直接粘贴内容</div>
+        <div style="margin-bottom:8px"><button class="btn btn-sm btn-plain" id="ssl-pick-file">${I("upload")} 选择证书文件</button>
+          <span class="help" style="margin:0 0 0 8px">支持 .pem / .crt / .key / .txt,自动区分证书与私钥</span></div>
+        <textarea class="textarea" id="ssl-cert-pem" rows="3" placeholder="证书内容(BEGIN CERTIFICATE ...)"></textarea>
+        <textarea class="textarea" id="ssl-key-pem" rows="3" placeholder="私钥内容(BEGIN PRIVATE KEY ...)" style="margin-top:6px"></textarea>
+        <div style="margin-top:10px"><button class="btn btn-primary" id="ssl-upload">${I("bolt")} 保存并启用 HTTPS</button></div></div>
 
-        <div class="waf-set-sec" style="padding:14px 16px 12px;margin-top:12px"><div class="waf-sec-head">${I("key")}自签证书<span class="settings-hint" style="margin:0 0 0 4px">仅本地/内网测试用,浏览器会提示不安全</span></div>
-          <button class="btn btn-sm btn-plain" id="ssl-selfsign">${I("key")} 生成自签证书(10年)并启用</button></div>
+        <div id="ssl-tab-selfsign" style="display:none">
+        <div class="wz-sec"><span class="ws-n">1</span>生成自签证书(测试用)</div>
+        <div class="settings-hint" style="margin:0 0 10px">一键生成本地测试证书(10 年),浏览器会提示不安全,生产环境请用前两种方式</div>
+        <button class="btn btn-primary" id="ssl-selfsign">${I("key")} 生成自签证书(10年)并启用</button></div>
 
-        <div style="margin-top:14px">
-          <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-redirect" ${site.ssl_redirect ? "checked" : ""}> HTTP 强制跳转 HTTPS(仅监听 80 端口时生效)</label></div>
-          <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-http2" ${site.http2 ? "checked" : ""}> HTTP/2(多路复用,页面加载更快)</label></div>
-          <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-hsts" ${site.hsts ? "checked" : ""}> HSTS(强制浏览器一年内只用 HTTPS 访问本站,开启后短期难以回退)</label></div></div>`,
+        <div class="wz-sec"><span class="ws-n">2</span>HTTPS 选项与证书库</div>
+        <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-redirect" ${site.ssl_redirect ? "checked" : ""}> HTTP 强制跳转 HTTPS(仅监听 80 端口时生效)</label></div>
+        <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-http2" ${site.http2 ? "checked" : ""}> HTTP/2(多路复用,页面加载更快)</label></div>
+        <div class="form-item"><label class="radio-line"><input type="checkbox" id="ssl-hsts" ${site.hsts ? "checked" : ""}> HSTS(强制浏览器一年内只用 HTTPS 访问本站,开启后短期难以回退)</label></div>
+        <div class="form-item"><label>当前使用的证书</label>
+          <select class="select" id="ssl-cert"><option value="">不启用 HTTPS</option>
+            ${certs.map((c) => '<option value="' + esc(c.id) + '"' + (c.id === site.ssl_cert_id ? " selected" : "") + ">" + esc(c.name) + (c.expire ? "(到期 " + esc(c.expire) + (c.acme ? " · LE" : "") + (c.profile === "shortlived" ? " · 短期" : "") + ")" : "") + "</option>").join("")}
+          </select>
+          <div style="margin-top:6px"><button class="btn btn-xs btn-danger-plain" id="ssl-cert-del">删除选中的证书</button>
+          <span class="help" style="margin:0 0 0 8px">在上方列表选中要删除的证书再点删除;文件一并移除,不可恢复</span></div>
+          <div class="help" id="ssl-cert-count">已有 ${certs.length} 张证书;LE 证书剩余不足 30 天自动续期(IP 短期证书不足 3 天自动续期)</div></div>`,
       footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">保 存</button>',
+    });
+    // 三种证书方式 tab 切换(免费/自有/自签)
+    qsa(".ssl-tab", m.el).forEach(function(c) {
+      c.onclick = function() {
+        qsa(".ssl-tab", m.el).forEach(function(x) { x.classList.toggle("active", x === c); });
+        ["acme", "upload", "selfsign"].forEach(function(t) {
+          var d = qs("#ssl-tab-" + t, m.el);
+          if (d) d.style.display = c.getAttribute("data-ssl-tab") === t ? "" : "none";
+        });
+      };
     });
     if (site.ssl_cert_id) {
       const dl = document.createElement("button");
