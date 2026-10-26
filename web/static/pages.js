@@ -114,7 +114,7 @@ PAGES.dashboard = {
       diskRings +
       "</div></div>" +
 
-      '<div class="grid-2" style="margin-top:14px">' +
+      '<div class="dash-tri" style="margin-top:14px">' +
       '<div class="card card-hover"><div class="card-title">服务器信息</div><table class="info-table">' +
       "<tr><td>主机名</td><td>" + esc(s.hostname) + "</td></tr>" +
       "<tr><td>操作系统</td><td>" + esc(s.platform) + " " + esc(s.platform_v) + " (" + esc(s.os) + ")</td></tr>" +
@@ -134,14 +134,13 @@ PAGES.dashboard = {
         : '<span class="tag tag-warning">未安装 Docker</span>') + "</td></tr>" +
       '<tr><td id="ssl-alert-td">证书状态</td><td id="ssl-alert-box"><span class="help">检查中...</span></td></tr>' +
       "</table></div>" +
-      '</div>' +
 
       '<div class="card card-hover"><div class="card-title">快捷入口</div><div class="quick-grid">' +
       [["globe", "网站", "websites", "#38bdf8"], ["store", "应用商店", "apps", "#a78bfa"], ["cube", "容器", "docker", "#0ea5e9"],
        ["clock", "计划任务", "cron", "#fb923c"], ["folder", "文件", "files", "#4ade80"], ["shield", "安全中心", "securityhub", "#f87171"],
        ["pulse", "监控中心", "monitorhub", "#f59e0b"], ["terminal", "终端", "terminal", "#64748b"]]
         .map(function(x) { return '<div class="quick-item" data-go="' + x[2] + '"><span class="qi-icon" style="color:' + x[3] + '">' + I(x[0]) + "</span><span>" + x[1] + "</span></div>"; }).join("") +
-      "</div></div></div>";
+      "</div></div></div></div>";
 
     el.innerHTML = html;
     el.querySelectorAll("[data-go]").forEach(function(n) {

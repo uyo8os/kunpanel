@@ -911,6 +911,10 @@ tr.fm-selected { background: var(--primary-light); }
 .kpi-warn { font-style: normal; font-size: 10.5px; color: var(--warning); display: block; }
 .dash-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 14px; }
 .dash-grid .card { margin: 0; height: 100%; box-sizing: border-box; }
+.dash-tri { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 14px; align-items: stretch; }
+.dash-tri .card { margin: 0; height: 100%; box-sizing: border-box; }
+.dash-tri .quick-grid { grid-template-columns: repeat(2, 1fr); gap: 9px; }
+@media (max-width: 1100px) { .dash-tri { grid-template-columns: 1fr; } }
 .mon-row { margin-bottom: 16px; }
 .mon-row:last-child { margin-bottom: 4px; }
 .mon-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; font-size: 13px; }
