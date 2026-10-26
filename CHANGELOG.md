@@ -3,6 +3,13 @@
 所有重要变更都会记录在此文件中。格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/),
 版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [v2.94.1] - 2026-10-21
+
+### 修复:三源更新首发校验轮
+
+- 在线更新重启兜底提示(无 systemd/OpenRC 环境手动重启)
+- GitCode 源 tag 解析兜底(release 缺失时回退 tags 列表取最新语义化版本)
+
 ## [v2.94.0] - 2026-10-21
 
 ### 重大:发布渠道迁移至 CNB / GitCode / Gitee 三平台,在线更新改为三源自动回退
