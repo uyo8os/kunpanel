@@ -924,6 +924,47 @@ tr.fm-selected { background: var(--primary-light); }
 
 /* ---- 概览圆环仪表 ---- */
 .ring-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; padding: 6px 4px 2px; }
+
+/* ---- 首页英雄横幅(深色渐变 + 发光圆环) ---- */
+.dash-hero {
+  position: relative; overflow: hidden; border-radius: 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 26px; flex-wrap: wrap; padding: 26px 30px; border: none;
+  background: linear-gradient(120deg, #0c1f3d 0%, #123059 55%, #0b3a52 100%);
+  color: #fff; box-shadow: 0 12px 32px rgba(9,28,58,.35);
+}
+.dash-hero::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(55% 90% at 88% 8%, rgba(34,211,238,.20), transparent 62%),
+              radial-gradient(45% 75% at 6% 92%, rgba(96,165,250,.16), transparent 58%);
+}
+.hero-left { position: relative; z-index: 1; min-width: 250px; }
+.hero-host {
+  font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: #fff;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.hero-os { font-size: 11px; font-weight: 600; color: #bfe3ff; background: rgba(255,255,255,.12); padding: 3px 11px; border-radius: 999px; }
+.hero-meta { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 11px; font-size: 12.5px; color: rgba(255,255,255,.72); }
+.hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+.hero-meta svg { width: 14px; height: 14px; }
+.hero-meta b { color: #fff; font-weight: 600; }
+.hero-net { display: flex; gap: 10px; margin-top: 14px; }
+.hero-net .net-line {
+  font-size: 12px; background: rgba(255,255,255,.10); border-radius: 999px; padding: 4px 13px;
+}
+.hero-net .net-line.down { color: #7ef0c0; }
+.hero-net .net-line.up { color: #8ecfff; }
+.hero-rings { position: relative; z-index: 1; display: flex; gap: 20px; flex-wrap: wrap; }
+.dash-hero .ring-grid { display: flex; gap: 20px; flex-wrap: wrap; padding: 0; }
+.dash-hero .ring-item .ring-box, .dash-hero .ring-item .ring { width: 88px; height: 88px; }
+.dash-hero .ring-bg { stroke: rgba(255,255,255,.16); }
+.dash-hero .ring-fg { filter: none; }
+.dash-hero .ring-val { font-size: 16px; color: #fff; }
+.dash-hero .ring-val i { color: rgba(255,255,255,.55); }
+.dash-hero .ring-label { color: rgba(255,255,255,.88); font-size: 12px; }
+.dash-hero .ring-sub { color: rgba(255,255,255,.55); max-width: 110px; }
+@media (max-width: 1100px) { .dash-hero .ring-grid { gap: 14px; } }
+@media (max-width: 760px) { .dash-hero { flex-direction: column; align-items: flex-start; } }
 .ring-item { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
 .ring-box { position: relative; width: 104px; height: 104px; }
 .ring { width: 104px; height: 104px; transform: rotate(-90deg); }

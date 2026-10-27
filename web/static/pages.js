@@ -103,28 +103,33 @@ PAGES.dashboard = {
       kpi("pulse", upDown ? "#f56c6c" : "#4ade80", ups.length ? (ups.length - upDown) + "/" + ups.length : "-", "拨测正常", "monitorhub") +
       "</div>" +
 
-      '<div class="card card-hover card-mon" style="margin-top:14px"><div class="card-title">系统监控<span class="mon-live">实时</span><span class="mon-net">' +
+      '<div class="dash-hero">' +
+      '<div class="hero-left">' +
+      '<div class="hero-host">' + esc(s.hostname) + '<span class="hero-os">' + esc(s.platform) + ' ' + esc(s.platform_v) + '</span></div>' +
+      '<div class="hero-meta">' +
+      '<span>' + I("globe") + ' 公网 <b>' + esc(s.public_ip || s.ip) + '</b></span>' +
+      '<span>' + I("clock") + ' 运行 ' + fmtUptime(s.uptime) + '</span>' +
+      '<span>' + I("cube") + ' Docker ' + (dk.installed ? dk.runningCount + '/' + dk.containers : '未安装') + '</span>' +
+      '</div>' +
+      '<div class="hero-net">' +
       '<span class="net-line down">' + I("netDown") + ' <b id="live-rx">' + fmtSpeed(s.net_rx_speed) + '</b></span>' +
-      '<span class="net-line up">' + I("netUp") + ' <b id="live-tx">' + fmtSpeed(s.net_tx_speed) + "</b></span></span></div>" +
-      '<div class="ring-grid">' +
+      '<span class="net-line up">' + I("netUp") + ' <b id="live-tx">' + fmtSpeed(s.net_tx_speed) + '</b></span></div></div>' +
+      '<div class="hero-rings">' +
       ring("CPU", cpuPct, (s.cpu_cores || "-") + " 核 · " + esc((s.cpu_model || "-").split("@")[0].trim().slice(0, 18)), "live-cpu") +
       ring("内存", memPct, fmtBytes(s.mem_used) + " / " + fmtBytes(s.mem_total), "live-mem") +
       (hasSwap ? ring("Swap", swapPct, fmtBytes(s.swap_used) + " / " + fmtBytes(s.swap_total), "live-swap") : "") +
       ring("负载", Math.min(100, (s.load1 / Math.max(1, s.cpu_cores)) * 100), "1/5/15: " + s.load1 + " / " + s.load5 + " / " + s.load15, "live-load") +
       diskRings +
-      "</div></div>" +
+      '</div></div>' +
 
-      '<div class="dash-tri" style="margin-top:14px">' +
-      '<div class="card card-hover"><div class="card-title">服务器信息</div><table class="info-table">' +
-      "<tr><td>主机名</td><td>" + esc(s.hostname) + "</td></tr>" +
+      '<div class="grid-2" style="margin-top:14px">' +
+      '<div class="card card-hover"><div class="card-title">网络与内核</div><table class="info-table">' +
       "<tr><td>操作系统</td><td>" + esc(s.platform) + " " + esc(s.platform_v) + " (" + esc(s.os) + ")</td></tr>" +
       "<tr><td>内核 / 架构</td><td>" + esc(s.kernel) + ' <span class="help">· ' + esc(s.arch) + "</span></td></tr>" +
       "<tr><td>IP 地址</td><td><span class=\"help\">内网</span> <span class=\"mono\">" + esc(s.ip) + "</span>" +
       (s.public_ip ? ' &nbsp;<span class="help">公网</span> <b class="mono">' + esc(s.public_ip) + "</b>" : ' &nbsp;<span class="help">公网获取中…</span>') + "</td></tr>" +
       '<tr><td>累计流量</td><td>收 ' + fmtBytes(s.net_rx_total) + " / 发 " + fmtBytes(s.net_tx_total) + "</td></tr>" +
       "</table></div>" +
-
-      '<div class="grid-2" style="margin-top:14px">' +
       '<div class="card card-hover"><div class="card-title">面板信息</div><table class="info-table">' +
       "<tr><td>面板版本</td><td>" + esc(p.version) + "</td></tr>" +
       "<tr><td>启动时间</td><td>" + esc(p.started) + "</td></tr>" +
