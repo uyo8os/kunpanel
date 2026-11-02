@@ -11,8 +11,10 @@ function clearPageTimers() { _pageTimers.forEach(clearInterval); _pageTimers.len
 PAGES.dashboard = {
   title: "概览",
   async render(el) {
-    el.innerHTML = '<div class="kpi-strip">' + Array(6).fill('<div class="card kpi-card"><div class="sk" style="height:40px"></div></div>').join("") + '</div>' +
-      '<div class="grid-2" style="margin-top:14px">' + skeletonTable(6, 3) + skeletonTable(6, 3) + "</div>";
+    var skLight = "background:linear-gradient(90deg,rgba(255,255,255,.10) 25%,rgba(255,255,255,.22) 45%,rgba(255,255,255,.10) 65%);background-size:400% 100%";
+    el.innerHTML = '<div class="kpi-strip">' + Array(6).fill('<div class="card kpi-card"><div class="sk" style="height:40px"></div></div>').join("") + "</div>" +
+      '<div class="dash-hero"><div class="sk" style="height:22px;width:200px;margin:6px 0 14px;' + skLight + '"></div><div class="sk" style="height:13px;width:320px;max-width:75%;' + skLight + '"></div></div>' +
+      '<div class="dash-info">' + skeletonTable(4, 2, 110) + skeletonTable(5, 2, 110) + skeletonTable(4, 2, 110) + "</div>";
     var results = await Promise.all([
       api("/dashboard"),
       api("/websites").catch(function() { return []; }),
@@ -90,9 +92,16 @@ PAGES.dashboard = {
         '<div class="ring-label">' + label + "</div>" +
         '<div class="ring-sub">' + sub + "</div></div>";
     }
-    var diskRings = (s.disks || []).slice(0, 2).map(function(dk2, i) {
-      return ring(dk2.path === "/" ? "系统盘" : "盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used), i === 0 ? "live-disk" : "");
-    }).join("");
+    // 圆环数量不定(CPU/内存/可选 Swap/负载/最多两块盘),列数随数量走,换行也保持等宽整齐
+    var rings = [
+      ring("CPU", cpuPct, (s.cpu_cores || "-") + " 核 · " + esc((s.cpu_model || "-").split("@")[0].trim().slice(0, 18)), "live-cpu"),
+      ring("内存", memPct, fmtBytes(s.mem_used) + " / " + fmtBytes(s.mem_total), "live-mem"),
+    ];
+    if (hasSwap) rings.push(ring("Swap", swapPct, fmtBytes(s.swap_used) + " / " + fmtBytes(s.swap_total), "live-swap"));
+    rings.push(ring("负载", Math.min(100, (s.load1 / Math.max(1, s.cpu_cores)) * 100), "1/5/15: " + s.load1 + " / " + s.load5 + " / " + s.load15, "live-load"));
+    (s.disks || []).slice(0, 2).forEach(function(dk2, i) {
+      rings.push(ring(dk2.path === "/" ? "系统盘" : "盘 " + dk2.path, dk2.usage_percent || 0, "已用 " + fmtBytes(dk2.used), i === 0 ? "live-disk" : ""));
+    });
 
     var html = '<div class="dash-wrap">' + guideHtml + '<div class="kpi-strip">' +
       kpi("globe", "#38bdf8", sites.length, "网站", "websites") +
@@ -114,15 +123,9 @@ PAGES.dashboard = {
       '<div class="hero-net">' +
       '<span class="net-line down">' + I("netDown") + ' <b id="live-rx">' + fmtSpeed(s.net_rx_speed) + '</b></span>' +
       '<span class="net-line up">' + I("netUp") + ' <b id="live-tx">' + fmtSpeed(s.net_tx_speed) + '</b></span></div></div>' +
-      '<div class="hero-rings">' +
-      ring("CPU", cpuPct, (s.cpu_cores || "-") + " 核 · " + esc((s.cpu_model || "-").split("@")[0].trim().slice(0, 18)), "live-cpu") +
-      ring("内存", memPct, fmtBytes(s.mem_used) + " / " + fmtBytes(s.mem_total), "live-mem") +
-      (hasSwap ? ring("Swap", swapPct, fmtBytes(s.swap_used) + " / " + fmtBytes(s.swap_total), "live-swap") : "") +
-      ring("负载", Math.min(100, (s.load1 / Math.max(1, s.cpu_cores)) * 100), "1/5/15: " + s.load1 + " / " + s.load5 + " / " + s.load15, "live-load") +
-      diskRings +
-      '</div></div>' +
+      '<div class="hero-rings" style="--ring-n:' + rings.length + ';flex-basis:' + (rings.length * 104 - 8) + 'px">' + rings.join("") + "</div></div>" +
 
-      '<div class="grid-2" style="margin-top:14px">' +
+      '<div class="dash-info">' +
       '<div class="card card-hover"><div class="card-title">网络与内核</div><table class="info-table">' +
       "<tr><td>操作系统</td><td>" + esc(s.platform) + " " + esc(s.platform_v) + " (" + esc(s.os) + ")</td></tr>" +
       "<tr><td>内核 / 架构</td><td>" + esc(s.kernel) + ' <span class="help">· ' + esc(s.arch) + "</span></td></tr>" +
@@ -140,7 +143,7 @@ PAGES.dashboard = {
       '<tr><td id="ssl-alert-td">证书状态</td><td id="ssl-alert-box"><span class="help">检查中...</span></td></tr>' +
       "</table></div>" +
 
-      '<div class="card card-hover"><div class="card-title">快捷入口</div><div class="quick-grid">' +
+      '<div class="card card-hover card-quick"><div class="card-title">快捷入口</div><div class="quick-grid">' +
       [["globe", "网站", "websites", "#38bdf8"], ["store", "应用商店", "apps", "#a78bfa"], ["cube", "容器", "docker", "#0ea5e9"],
        ["clock", "计划任务", "cron", "#fb923c"], ["folder", "文件", "files", "#4ade80"], ["shield", "安全中心", "securityhub", "#f87171"],
        ["pulse", "监控中心", "monitorhub", "#f59e0b"], ["terminal", "终端", "terminal", "#64748b"]]
@@ -176,27 +179,29 @@ PAGES.dashboard = {
       box.innerHTML = warns.length ? warns.join("<br>") : '<span style="color:var(--success)">正常(LE 证书自动续期)</span>';
     })();
 
-    // 24h 趋势
+    // 24h 趋势(挂到概览底部;自适应 3/2/1 列)
     fetch("/api/v1/mon/history?n=180", { headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) } })
       .then(function(r) { return r.json() }).then(function(hist) {
         if (el.dataset.route !== "dashboard") return;
         hist = hist || [];
         if (hist.length < 2) return;
         function spark(data, label, color) {
-          var w = 200, h = 50, max = Math.max.apply(null, data) || 1;
-          var pts = data.map(function(v, i) { return (i/(data.length-1)*w).toFixed(1)+","+(h-v/max*(h-4)-2).toFixed(1); }).join(" ");
+          var w = 200, h = 54, max = Math.max.apply(null, data) || 1;
+          var pts = data.map(function(v, i) { return (i/(data.length-1)*w).toFixed(1)+","+(h-v/max*(h-6)-3).toFixed(1); }).join(" ");
           var last = data[data.length-1];
-          return '<div><div style="font-size:12px;color:var(--text-3);margin-bottom:4px">'+esc(label)+' <b style="color:'+color+'">'+(last<10?last.toFixed(1):Math.round(last))+"</b></div>" +
-            '<svg width="100%" height="'+h+'" viewBox="0 0 '+w+" "+h+'" preserveAspectRatio="none"><polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.5"/></svg></div>';
+          return '<div class="spark-item"><div class="spark-head">' + esc(label) + ' <b style="color:' + color + '">' + (last<10?last.toFixed(1):Math.round(last)) + "</b></div>" +
+            '<svg class="spark-svg" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none">' +
+            '<polygon points="0,' + h + " " + pts + " " + w + "," + h + '" fill="' + color + '" opacity=".10"/>' +
+            '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg></div>';
         }
-        var grid = el.querySelector(".dash-grid");
-        if (!grid) return;
-        grid.insertAdjacentHTML("afterend", '<div class="card card-hover" style="margin-top:14px"><div class="card-title">24 小时监控趋势</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">' +
-          spark(hist.map(function(p2){return p2.cpu}), "CPU %", "#0066ff") +
+        var wrap = el.querySelector(".dash-wrap");
+        if (!wrap) return;
+        wrap.insertAdjacentHTML("beforeend", '<div class="card card-hover"><div class="card-title">24 小时监控趋势</div><div class="dash-trend">' +
+          spark(hist.map(function(p2){return p2.cpu}), "CPU %", "#3b82f6") +
           spark(hist.map(function(p2){return p2.mem}), "内存 %", "#22c55e") +
-          spark(hist.map(function(p2){return Math.min(p2.net_rx/1024, 9999)}), "下行 KB/s", "#e6a23c") +
-          spark(hist.map(function(p2){return Math.min(p2.net_tx/1024, 9999)}), "上行 KB/s", "#f59e0b") +
-          spark(hist.map(function(p2){return Math.min((p2.disk_r||0)/1024, 9999)}), "磁盘读 KB/s", "#8b5cf6") +
+          spark(hist.map(function(p2){return Math.min(p2.net_rx/1024, 9999)}), "下行 KB/s", "#06b6d4") +
+          spark(hist.map(function(p2){return Math.min(p2.net_tx/1024, 9999)}), "上行 KB/s", "#8b5cf6") +
+          spark(hist.map(function(p2){return Math.min((p2.disk_r||0)/1024, 9999)}), "磁盘读 KB/s", "#f59e0b") +
           spark(hist.map(function(p2){return Math.min((p2.disk_w||0)/1024, 9999)}), "磁盘写 KB/s", "#ec4899") +
           "</div></div>");
       });
@@ -3606,7 +3611,7 @@ PAGES.cron = {
     try { list = (await api("/crons")) || []; }
     catch (e) { qs("#cron-table", el).innerHTML = emptyState("warn", "加载失败", e.message); return; }
     window.__cronList = list;
-    var typeTag = { shell: '<span class="tag tag-primary">脚本</span>', backup: '<span class="tag tag-warning">备份</span>', logrotate: '<span class="tag tag-info">日志切割</span>', dbbackup: '<span class="tag tag-success">数据库备份</span>', trashclean: '<span class="tag tag-purple">回收站清理</span>', panelbackup: '<span class="tag tag-warning">面板备份</span>', containerlog: '<span class="tag tag-info">容器日志</span>' };
+    var typeTag = { shell: '<span class="tag tag-primary">脚本</span>', backup: '<span class="tag tag-warning">备份</span>', logrotate: '<span class="tag tag-info">日志切割</span>', dbbackup: '<span class="tag tag-success">数据库备份</span>', trashclean: '<span class="tag tag-purple">回收站清理</span>', panelbackup: '<span class="tag tag-warning">面板备份</span>', containerlog: '<span class="tag tag-info">容器日志</span>', buildcache: '<span class="tag tag-info">构建缓存</span>' };
     var html;
     if (!list.length) {
       html = emptyState("clock", "暂无计划任务", "支持 Shell 脚本、目录备份、网站日志切割三种类型");
@@ -3667,7 +3672,7 @@ PAGES.cron = {
       body:
         '<div class="form-item required"><label>任务名称</label><input class="input" id="cr-name" value="' + esc(job.name || "") + '" placeholder="如 每日凌晨备份网站"></div>' +
         '<div class="form-item required"><label>任务类型</label><select class="select" id="cr-type"' + (isEdit ? " disabled" : "") + '>' +
-        '<option value="shell">Shell 脚本</option><option value="backup">目录备份</option><option value="dbbackup">数据库备份</option><option value="logrotate">网站日志切割</option><option value="trashclean">回收站清理</option><option value="panelbackup">面板备份</option><option value="containerlog">容器日志清理</option></select></div>' +
+        '<option value="shell">Shell 脚本</option><option value="backup">目录备份</option><option value="dbbackup">数据库备份</option><option value="logrotate">网站日志切割</option><option value="trashclean">回收站清理</option><option value="panelbackup">面板备份</option><option value="containerlog">容器日志清理</option><option value="buildcache">构建缓存清理</option></select></div>' +
         (isEdit ? '<div class="help" style="margin:6px 0 12px">类型创建后不可修改,如需更换类型请新建任务</div>' : "") +
         '<div class="form-item required"><label>执行周期</label><select class="select" id="cr-cyc" style="max-width:240px">' +
         '<option value="day">每天</option><option value="week">每周</option><option value="month">每月</option>' +
@@ -6723,7 +6728,8 @@ PAGES.docker = {
     var head = '<div class="card"><div class="card-title">Docker ' + esc(info.version || "") +
       '<div style="display:flex;gap:8px"><button class="btn btn-sm btn-plain" id="dk-refresh">' + I("refresh") + " 刷新</button>" +
       '<button class="btn btn-sm btn-plain" id="dk-logrotate">' + I("gear") + ' 日志轮转</button>' +
-      '<button class="btn btn-sm btn-plain" id="dk-prune">' + I("trash") + ' 清理悬空镜像</button></div></div>' +
+      '<button class="btn btn-sm btn-plain" id="dk-prune">' + I("trash") + ' 清理悬空镜像</button>' +
+      '<button class="btn btn-sm btn-plain" id="dk-buildcache">' + I("trash") + ' 清理构建缓存</button></div></div>' +
       '<div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">' +
       '<div class="card kpi-card" style="cursor:default"><span class="kpi-ico" style="color:#0ea5e9">' + I("play") + '</span><div class="kpi-num"><b>' + (info.runningCount || 0) + "</b><span>运行中容器</span></div></div>" +
       '<div class="card kpi-card" style="cursor:default"><span class="kpi-ico" style="color:#94a3b8">' + I("cube") + '</span><div class="kpi-num"><b>' + (info.containers || 0) + "</b><span>全部容器</span></div></div>" +
@@ -6771,6 +6777,21 @@ PAGES.docker = {
         try {
           var r = await api("/docker/prune", { method: "POST", body: {} });
           toast("已清理,释放 " + (r.reclaimed || "0"), "success", 4000);
+          self.render(el);
+        } catch (e) { toast(e.message, "error"); }
+      };
+      qs("#dk-buildcache", el).onclick = async function() {
+        var btn = this;
+        btn.disabled = true;
+        var st;
+        try { st = await api("/docker/buildcache"); }
+        catch (e) { btn.disabled = false; toast(e.message, "error"); return; }
+        btn.disabled = false;
+        var tip = "当前构建缓存占用 " + (st && st.size || "-") + "(预计可回收 " + (st && st.reclaimable || "-") + ")。";
+        if (!(await confirmDlg(tip + "清理后不影响已构建镜像与运行容器,继续?"))) return;
+        try {
+          await api("/docker/buildcache/clean", { method: "POST", body: {} });
+          toast("构建缓存已清理", "success", 4000);
           self.render(el);
         } catch (e) { toast(e.message, "error"); }
       };
