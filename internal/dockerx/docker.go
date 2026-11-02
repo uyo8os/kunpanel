@@ -768,6 +768,29 @@ func PruneDanglingImages() (string, error) {
 	return util.RunWithTimeout(10*time.Minute, "docker", "image", "prune", "-f")
 }
 
+// BuildCacheInfo 构建缓存占用(docker system df 中 Build Cache 行;
+// 烘焙 PHP 镜像、构建应用时积累)。docker 未运行或旧版无此行时返回 0B。
+func BuildCacheInfo() (size, reclaimable string, err error) {
+	out, err := util.RunWithTimeout(20*time.Second, "docker", "system", "df",
+		"--format", "{{.Type}}|{{.Size}}|{{.Reclaimable}}")
+	if err != nil {
+		return "", "", fmt.Errorf("docker system df 失败: %s", tail(out, 200))
+	}
+	size, reclaimable = "0B", "0B"
+	for _, line := range strings.Split(out, "\n") {
+		parts := strings.Split(strings.TrimRight(line, "\r"), "|")
+		if len(parts) >= 3 && strings.TrimSpace(parts[0]) == "Build Cache" {
+			return strings.TrimSpace(parts[1]), strings.TrimSpace(parts[2]), nil
+		}
+	}
+	return size, reclaimable, nil
+}
+
+// PruneBuildCache 清理构建缓存(悬空的构建层,不影响已构建镜像与运行容器)
+func PruneBuildCache() (string, error) {
+	return util.RunWithTimeout(10*time.Minute, "docker", "builder", "prune", "-f")
+}
+
 // ComposeValidate 用 docker compose config 校验 compose 文件
 func ComposeValidate(composeFile string) (string, error) {
 	return util.RunWithTimeout(60*time.Second, "docker", "compose", "-f", composeFile, "config", "--quiet")

@@ -148,6 +148,8 @@ func (s *Server) registerAPI() {
 	m.Handle("POST /api/v1/docker/pull", wrap(http.HandlerFunc(s.handleDockerPull)))
 	m.Handle("POST /api/v1/docker/create", wrap(http.HandlerFunc(s.handleDockerCreate)))
 	m.Handle("POST /api/v1/docker/prune", wrap(http.HandlerFunc(s.handleDockerPrune)))
+	m.Handle("GET /api/v1/docker/buildcache", wrap(http.HandlerFunc(s.handleDockerBuildCache)))
+	m.Handle("POST /api/v1/docker/buildcache/clean", wrap(http.HandlerFunc(s.handleDockerBuildCacheClean)))
 
 	// 数据库快捷操作
 	m.Handle("GET /api/v1/db/{key}/tables", wrap(http.HandlerFunc(s.handleDbTables)))

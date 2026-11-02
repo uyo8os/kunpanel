@@ -102,6 +102,26 @@ func (s *Server) handleDockerPrune(w http.ResponseWriter, r *http.Request) {
 	OK(w, map[string]any{"output": out})
 }
 
+// handleDockerBuildCache 构建缓存占用查看
+func (s *Server) handleDockerBuildCache(w http.ResponseWriter, r *http.Request) {
+	size, reclaimable, err := dockerx.BuildCacheInfo()
+	if err != nil {
+		Fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	OK(w, map[string]any{"size": size, "reclaimable": reclaimable})
+}
+
+// handleDockerBuildCacheClean 构建缓存一键清理
+func (s *Server) handleDockerBuildCacheClean(w http.ResponseWriter, r *http.Request) {
+	out, err := dockerx.PruneBuildCache()
+	if err != nil {
+		Fail(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	OK(w, map[string]any{"output": out})
+}
+
 type containerCreateReq struct {
 	Image   string            `json:"image"`
 	Name    string            `json:"name"`

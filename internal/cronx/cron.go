@@ -29,7 +29,7 @@ import (
 type Job struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
-	Type      string `json:"type"` // shell / backup / logrotate / dbbackup / trashclean / panelbackup / containerlog
+	Type      string `json:"type"` // shell / backup / logrotate / dbbackup / trashclean / panelbackup / containerlog / buildcache
 	Spec      string `json:"spec"` // 标准 5 位 cron 表达式
 	Command   string `json:"command"`
 	BackupSrc string `json:"backup_src,omitempty"`
@@ -288,7 +288,7 @@ func validateJob(j *Job) error {
 		if j.Keep <= 0 {
 			j.Keep = 10
 		}
-	case "containerlog":
+	case "containerlog", "buildcache":
 		// 无额外参数
 	default:
 		j.Type = "shell"
@@ -471,6 +471,9 @@ func execute(j Job) (string, error) {
 	if j.Type == "containerlog" {
 		return doContainerLogClean()
 	}
+	if j.Type == "buildcache" {
+		return doBuildCacheClean()
+	}
 	if j.Type == "trashclean" {
 		n, err := filemgr.TrashCleanOld(time.Now().AddDate(0, 0, -j.Keep))
 		if err != nil {
@@ -588,6 +591,25 @@ func doContainerLogClean() (string, error) {
 		}
 	}
 	return fmt.Sprintf("已清理 %d 个容器的日志文件%s", n, gwExtra), nil
+}
+
+func doBuildCacheClean() (string, error) {
+	// 清理 Docker 构建缓存(悬空构建层);烘焙镜像/构建应用后会持续积累
+	out, err := dockerx.PruneBuildCache()
+	if err != nil {
+		return "", err
+	}
+	n := 0
+	for _, line := range strings.Split(out, "\n") {
+		// docker builder prune -f 逐行输出被回收的缓存 ID,末行汇总释放量
+		if strings.TrimSpace(line) != "" {
+			n++
+		}
+	}
+	if n <= 1 {
+		return "构建缓存已是干净状态,无需清理", nil
+	}
+	return fmt.Sprintf("构建缓存清理完成: 回收 %d 条构建缓存记录", n-1), nil
 }
 
 func doLogrotate(j Job) (string, error) {
