@@ -11,7 +11,7 @@ import (
 )
 
 // version 是项目版本的权威来源。
-var version = "v2.98.2"
+var version = "v2.98.3"
 
 //go:embed all:web
 var webFS embed.FS
