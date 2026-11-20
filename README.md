@@ -12,6 +12,8 @@
 [![](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
 [![](https://img.shields.io/badge/📖_使用教程-TUTORIAL-8a2be2?style=flat-square)](docs/TUTORIAL.md)
 
+</div>
+
 ---
 
 > 📖 **[完整使用教程(TUTORIAL.md)](docs/TUTORIAL.md)** —— 首次登录、建站、SSL、迁移、WAF、计划任务、FAQ,手把手图文步骤。
