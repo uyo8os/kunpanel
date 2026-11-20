@@ -1,8 +1,8 @@
 # 坤面板 KunPanel - 单阶段源码构建镜像
 # 构建: docker build -t kunpanel:latest .
-FROM golang:1.23-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
-ARG VERSION=v1.0.0
+ARG VERSION=
 WORKDIR /src
 
 RUN apk add --no-cache git ca-certificates tzdata
@@ -11,9 +11,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath \
-    -ldflags "-s -w -X main.version=${VERSION}" \
-    -o /out/kunpanel .
+RUN if [ -n "$VERSION" ]; then LDFLAGS="-s -w -X main.version=${VERSION}"; else LDFLAGS="-s -w"; fi \
+    && CGO_ENABLED=0 GOOS=linux go build -trimpath \
+    -ldflags "$LDFLAGS" -o /out/kunpanel .
 
 # ---------------- 运行镜像 ----------------
 FROM alpine:3.20

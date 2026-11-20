@@ -1,0 +1,107 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version tag (vX.Y.Z)
+        required: true
+        type: string
+        default: v2.98.0
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Validate version and selected commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            TAG="$INPUT_VERSION"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must have the form vX.Y.Z: $TAG"
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF_TYPE" != branch ]]; then
+            echo "::error::Select a branch when running this workflow manually."
+            exit 1
+          fi
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo "::error::Checked out commit does not match the selected commit."
+            exit 1
+          fi
+          go build -trimpath -o "$RUNNER_TEMP/kunpanel-version-check" .
+          actual_version="$("$RUNNER_TEMP/kunpanel-version-check" --version)"
+          if [[ "$actual_version" != "KunPanel $TAG" ]]; then
+            echo "::error::Program version '$actual_version' does not match $TAG."
+            exit 1
+          fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+      - name: Check existing tag and release
+        run: source scripts/check-release.sh
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build release packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build.sh "$TAG"
+          tar -xzf "release/kunpanel_${TAG}_linux_amd64.tar.gz" -C "$RUNNER_TEMP" ./kunpanel
+          actual_version="$("$RUNNER_TEMP/kunpanel" --version)"
+          if [[ "$actual_version" != "KunPanel $TAG" ]]; then
+            echo "::error::Packaged program version '$actual_version' does not match $TAG."
+            exit 1
+          fi
+          (cd release && sha256sum --check SHA256SUMS)
+      - name: Recheck and create tag if needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          source scripts/check-release.sh
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$RELEASE_TAG_EXISTS" == false ]]; then
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG:refs/tags/$TAG"
+          fi
+          source scripts/check-release.sh
+          if [[ "$RELEASE_TAG_EXISTS" != true ]]; then
+            echo "::error::The release tag was not found on the remote."
+            exit 1
+          fi
+      - name: Create draft and publish latest release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" release/*.tar.gz release/*.zip release/SHA256SUMS \
+            --verify-tag --draft --title "$TAG" --generate-notes
+          SKIP_RELEASE_CHECK=true source scripts/check-release.sh
+          if [[ "$RELEASE_TAG_EXISTS" != true ]]; then
+            echo "::error::The release tag disappeared before publishing."
+            exit 1
+          fi
+          gh release edit "$TAG" --draft=false --latest

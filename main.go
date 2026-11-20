@@ -10,8 +10,8 @@ import (
 	"kunpanel/internal/btmigrate"
 )
 
-// version 由构建时注入: -ldflags "-X main.version=v1.0.0"
-var version = "v1.0.0"
+// version 是项目版本的权威来源。
+var version = "v2.98.0"
 
 //go:embed all:web
 var webFS embed.FS

@@ -138,10 +138,29 @@ docker run -d --name kunpanel -p 20000:20000 \
 
 ```bash
 git clone https://github.com/uyo8os/kunpanel.git && cd kunpanel
-bash build.sh v2.78.1     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
+bash build.sh v2.98.0     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
 ```
 
 Go 1.27+,前端为原生 JS(`go:embed` 内嵌),无 Node 构建步骤。
+
+## 📦 发布新版本
+
+发布前先在准备发布的分支上完成并推送以下修改：
+
+1. 将 `main.go` 中的 `var version` 改为新版本，例如 `v2.99.0`。这是程序默认版本和发布校验的版本来源。
+2. 将 `.github/workflows/publish-release.yml` 中手动输入的 `default` 和本文顶部版本徽章同步更新为同一版本；在 `CHANGELOG.md` 添加对应的更新记录。Docker 镜像默认使用 `main.go` 中的版本，也可用构建参数 `VERSION` 覆盖。
+3. 确认提交中的版本号采用 `v数字.数字.数字` 格式，并检查发布分支和提交。工作流会校验版本、标签与构建出的程序版本，运行测试和构建，全部成功后发布 Release 并标记为 Latest。
+
+有两种发布方式：
+
+- **推送标签**：在要发布的提交上执行 `git tag v2.99.0`，然后执行 `git push origin v2.99.0`。推送以 `v` 开头的标签会触发 **Publish release** 工作流；不符合版本格式的标签会校验失败。
+- **手动发布**：在 GitHub 仓库的 **Actions → Publish release → Run workflow** 中选择发布分支，填写必填项 **Stable version tag (vX.Y.Z)** 并运行。输入框默认值来自工作流文件，需要随版本更新。标签不存在时，工作流会为所选分支的提交创建标签；标签已存在且指向其他提交时会报错，不会移动标签。
+
+如果该版本的 Release 已存在，工作流会停止并报错。工作流先创建草稿并上传文件，全部成功后才发布；如果中途失败，检查 Actions 日志、标签指向和 GitHub Releases 页面。若遗留草稿，请检查并删除该草稿后重试；保留指向正确提交的标签即可，不要移动已发布的标签来覆盖已有版本。
+
+Release 包含 Linux 的 amd64、arm64、arm 安装包和 Windows amd64 安装包，每种都有带版本号和不带版本号的文件，以及 `SHA256SUMS` 校验文件。不带版本号的文件供安装脚本和在线更新使用。
+
+工作流使用 GitHub 自动提供的 `GITHUB_TOKEN` 创建标签和 Release，需要 `contents: write` 权限，无需自行创建发布 Secrets。请在仓库设置中确认 Actions 允许工作流写入仓库，并检查标签保护或规则集允许该工作流创建版本标签。建议限制版本标签的修改和删除，以防其他操作在发布检查与发布之间更改标签。当前仓库没有自动签名或镜像发布工作流，也不需要为它们配置 Secrets。
 
 ## 📄 License
 

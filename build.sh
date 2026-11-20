@@ -6,9 +6,18 @@
 set -e
 cd "$(dirname "$0")"
 
-VERSION="${1:-v1.0.0}"
+SOURCE_VERSION="$(sed -n 's/^var version = "\(v[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)"$/\1/p' main.go)"
+if [[ ! "$SOURCE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "错误:无法从 main.go 读取唯一的稳定版本号" >&2
+  exit 1
+fi
+VERSION="${1:-$SOURCE_VERSION}"
+if [[ "$VERSION" != "$SOURCE_VERSION" ]]; then
+  echo "错误:请求版本 $VERSION 与程序版本 $SOURCE_VERSION 不一致" >&2
+  exit 1
+fi
 OUT="release"
-LDFLAGS="-s -w -X main.version=${VERSION}"
+LDFLAGS="-s -w"
 
 echo "==> 构建坤面板 ${VERSION}"
 
