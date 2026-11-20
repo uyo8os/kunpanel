@@ -75,6 +75,46 @@ func TestNginxConfigQuoteRejectsNewline(t *testing.T) {
 	}
 }
 
+func TestServiceUnitPIDFileMatchesNginxConfig(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data with $ space")
+	t.Setenv("KP_DATA_DIR", dir)
+	if err := writeInitialConfig(); err != nil {
+		t.Fatal(err)
+	}
+	pid := filepath.Join(root(), "nginx.pid")
+	unit, err := serviceUnit(Binary(), Prefix()+"/", ConfigPath(), pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// PIDFile has no argument quoting or dollar expansion. ExecStart does.
+	if !strings.Contains(unit, "\nPIDFile="+pid+"\n") {
+		t.Fatalf("unit PIDFile is not the literal configured path: %s", unit)
+	}
+	if !strings.Contains(unit, "ExecStart=\"") || !strings.Contains(unit, "$$") {
+		t.Fatalf("ExecStart did not quote/escape its arguments: %s", unit)
+	}
+	conf, err := os.ReadFile(ConfigPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	quotedPID, err := nginxQuote(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(conf), "\npid "+quotedPID+";\n") {
+		t.Fatalf("nginx pid does not match systemd PIDFile: %s", conf)
+	}
+}
+
+func TestServiceUnitRejectsInvalidPIDPaths(t *testing.T) {
+	base := filepath.Join(t.TempDir(), "nginx.pid")
+	for _, path := range []string{"relative.pid", base + "%n", base + "\nInjected=yes", base + "\r", base + "\x00"} {
+		if _, err := serviceUnit("nginx", "prefix", "config", path); err == nil {
+			t.Errorf("accepted invalid PID path %q", path)
+		}
+	}
+}
+
 func TestReusingBuildRequiresMatchingManifest(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "1.30.7")
 	for _, dir := range []string{filepath.Join(target, "sbin"), filepath.Join(target, "conf")} {

@@ -123,6 +123,34 @@ func run(w io.Writer, timeout time.Duration, dir, name string, args ...string) e
 	}
 	return nil
 }
+
+// Record service diagnostics before cleanup removes the unit or changes its state.
+// Both commands are best-effort and time-limited so diagnostics cannot block rollback.
+func logServiceDiagnostics(w io.Writer) {
+	commands := []struct {
+		name string
+		args []string
+	}{
+		{"systemctl", []string{"status", "--no-pager", "--full", "--lines=30", ServiceName}},
+		{"journalctl", []string{"-u", ServiceName, "-n", "50", "--no-pager", "-o", "short"}},
+	}
+	for _, c := range commands {
+		fmt.Fprintf(w, "\n---- %s %s ----\n", c.name, strings.Join(c.args, " "))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cmd := exec.CommandContext(ctx, c.name, c.args...)
+		// A child retaining a redirected output pipe must not stall cleanup.
+		cmd.WaitDelay = time.Second
+		cmd.Stdout, cmd.Stderr = w, w
+		err := cmd.Run()
+		if ctx.Err() != nil {
+			fmt.Fprintf(w, "%s 诊断超时\n", c.name)
+		} else if err != nil {
+			fmt.Fprintf(w, "%s 诊断命令结束: %v\n", c.name, err)
+		}
+		cancel()
+	}
+}
+
 func systemd() bool {
 	if runtime.GOOS != "linux" {
 		return false
@@ -354,24 +382,31 @@ func writeInitialConfig() error {
 	text := fmt.Sprintf("worker_processes auto;\npid %s;\nerror_log %s;\nevents { worker_connections 1024; }\nhttp {\n    include %s;\n    default_type application/octet-stream;\n    access_log %s;\n    sendfile on;\n    keepalive_timeout 65;\n    include %s;\n}\n", pid, el, mime, al, include)
 	return os.WriteFile(ConfigPath(), []byte(text), 0o644)
 }
+func serviceUnit(binary, prefixPath, configPath, pidPath string) (string, error) {
+	bin, e := serviceQuote(binary)
+	if e != nil {
+		return "", e
+	}
+	prefix, e := serviceQuote(prefixPath)
+	if e != nil {
+		return "", e
+	}
+	conf, e := serviceQuote(configPath)
+	if e != nil {
+		return "", e
+	}
+	// PIDFile is a single path, not an ExecStart-style argument. systemd
+	// treats quotes and dollar signs here as literal path characters.
+	if !filepath.IsAbs(pidPath) || strings.ContainsAny(pidPath, "\r\n\x00%") {
+		return "", fmt.Errorf("PID 文件路径必须是绝对路径且不能包含换行或 %%")
+	}
+	return fmt.Sprintf("[Unit]\nDescription=KunPanel native Nginx\nAfter=network.target\n\n[Service]\nType=forking\nPIDFile=%s\nExecStartPre=%s -p %s -c %s -t\nExecStart=%s -p %s -c %s\nExecReload=%s -p %s -c %s -s reload\nExecStop=%s -p %s -c %s -s quit\nTimeoutStopSec=30\n\n[Install]\nWantedBy=multi-user.target\n", pidPath, bin, prefix, conf, bin, prefix, conf, bin, prefix, conf, bin, prefix, conf), nil
+}
 func writeService() error {
-	bin, e := serviceQuote(Binary())
-	if e != nil {
-		return e
+	text, err := serviceUnit(Binary(), Prefix()+"/", ConfigPath(), filepath.Join(root(), "nginx.pid"))
+	if err != nil {
+		return err
 	}
-	prefix, e := serviceQuote(Prefix() + "/")
-	if e != nil {
-		return e
-	}
-	conf, e := serviceQuote(ConfigPath())
-	if e != nil {
-		return e
-	}
-	pid, e := serviceQuote(filepath.Join(root(), "nginx.pid"))
-	if e != nil {
-		return e
-	}
-	text := fmt.Sprintf("[Unit]\nDescription=KunPanel native Nginx\nAfter=network.target\n\n[Service]\nType=forking\nPIDFile=%s\nExecStartPre=%s -p %s -c %s -t\nExecStart=%s -p %s -c %s\nExecReload=%s -p %s -c %s -s reload\nExecStop=%s -p %s -c %s -s quit\nTimeoutStopSec=30\n\n[Install]\nWantedBy=multi-user.target\n", pid, bin, prefix, conf, bin, prefix, conf, bin, prefix, conf, bin, prefix, conf)
 	// Do not replace a service not installed by this module.
 	if b, err := os.ReadFile(unitPath); err == nil && !strings.Contains(string(b), "Description=KunPanel native Nginx") {
 		return fmt.Errorf("服务文件 %s 已存在且不属于面板", unitPath)
@@ -628,41 +663,67 @@ func Install(version string, w io.Writer) error {
 		_ = os.Remove(next)
 		return err
 	}
-	rollback := func() {
+	rollback := func() error {
 		if old == "" {
-			_ = os.Remove(Prefix())
-		} else {
-			tmp := filepath.Join(root(), ".current-rollback")
-			_ = os.Remove(tmp)
-			if os.Symlink(old, tmp) == nil {
-				_ = os.Rename(tmp, Prefix())
+			if err := os.Remove(Prefix()); err != nil && !os.IsNotExist(err) {
+				return err
 			}
+			return nil
 		}
+		tmp := filepath.Join(root(), ".current-rollback")
+		if err := os.Remove(tmp); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.Symlink(old, tmp); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, Prefix()); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		return nil
 	}
 	if err = run(w, 30*time.Second, "", Binary(), "-p", Prefix()+"/", "-c", ConfigPath(), "-t"); err != nil {
-		rollback()
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return fmt.Errorf("配置检查失败: %w；恢复版本指针失败: %v", err, rollbackErr)
+		}
 		return fmt.Errorf("配置检查失败，保留原服务: %w", err)
 	}
 	if err = writeService(); err != nil {
-		rollback()
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return fmt.Errorf("写入服务失败: %w；恢复版本指针失败: %v", err, rollbackErr)
+		}
 		return err
 	}
-	cleanupNewService := func() {
+	cleanupNewService := func() error {
 		if !wasInstalled {
-			_ = exec.Command("systemctl", "disable", "--now", ServiceName).Run()
-			_ = os.Remove(unitPath)
-			_ = exec.Command("systemctl", "daemon-reload").Run()
+			if err := run(w, 60*time.Second, "", "systemctl", "disable", "--now", ServiceName); err != nil {
+				return err
+			}
+			if err := os.Remove(unitPath); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			return run(w, 30*time.Second, "", "systemctl", "daemon-reload")
 		}
+		return nil
 	}
 	if err = run(w, 30*time.Second, "", "systemctl", "daemon-reload"); err != nil {
-		cleanupNewService()
-		rollback()
+		if cleanupErr := cleanupNewService(); cleanupErr != nil {
+			return fmt.Errorf("加载服务失败: %w；清理失败: %v", err, cleanupErr)
+		}
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return fmt.Errorf("加载服务失败: %w；恢复版本指针失败: %v", err, rollbackErr)
+		}
 		return err
 	}
 	if !wasInstalled {
 		if err = run(w, 30*time.Second, "", "systemctl", "enable", ServiceName); err != nil {
-			cleanupNewService()
-			rollback()
+			if cleanupErr := cleanupNewService(); cleanupErr != nil {
+				return fmt.Errorf("启用服务失败: %w；清理失败: %v", err, cleanupErr)
+			}
+			if rollbackErr := rollback(); rollbackErr != nil {
+				return fmt.Errorf("启用服务失败: %w；恢复版本指针失败: %v", err, rollbackErr)
+			}
 			return err
 		}
 	} else if !wasRunning {
@@ -675,12 +736,22 @@ func Install(version string, w io.Writer) error {
 		operation = "restart"
 	}
 	if err = run(w, 60*time.Second, "", "systemctl", operation, ServiceName); err != nil {
-		cleanupNewService()
-		rollback()
-		if wasRunning {
-			_ = action("restart")
+		logServiceDiagnostics(w)
+		if cleanupErr := cleanupNewService(); cleanupErr != nil {
+			return fmt.Errorf("启动失败: %w；清理新服务失败，已保留版本文件: %v", err, cleanupErr)
 		}
-		return fmt.Errorf("启动失败，已恢复旧版本: %w", err)
+		if rollbackErr := rollback(); rollbackErr != nil {
+			return fmt.Errorf("启动失败: %w；恢复版本指针失败: %v", err, rollbackErr)
+		}
+		if wasRunning {
+			if restoreErr := run(w, 60*time.Second, "", "systemctl", "restart", ServiceName); restoreErr != nil {
+				return fmt.Errorf("启动失败，已尝试恢复旧版本，但重启旧服务失败: %w；恢复错误: %v", err, restoreErr)
+			}
+		}
+		if !wasInstalled {
+			return fmt.Errorf("启动失败，已尝试清理新安装: %w", err)
+		}
+		return fmt.Errorf("启动失败，已尝试恢复旧版本: %w", err)
 	}
 	fmt.Fprintln(w, "原生 Nginx 安装完成:", version)
 	installed = true
