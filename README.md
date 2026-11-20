@@ -138,7 +138,7 @@ docker run -d --name kunpanel -p 20000:20000 \
 
 ```bash
 git clone https://github.com/uyo8os/kunpanel.git && cd kunpanel
-bash build.sh v2.98.0     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
+bash build.sh v2.98.1     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
 ```
 
 Go 1.27+,前端为原生 JS(`go:embed` 内嵌),无 Node 构建步骤。
