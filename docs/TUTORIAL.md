@@ -147,9 +147,9 @@
 
 ## 5. 应用商店与 PHP 多版本
 
-**应用商店**:17+ 应用一键部署(WordPress、Nginx、OpenResty、MySQL、Redis、phpMyAdmin、Uptime Kuma、坤发卡、NAT Cloud 等)。
+**应用商店**:提供 Nginx、PHP、MySQL、MariaDB、PostgreSQL、phpMyAdmin 和 Redis。
 
-- 安装 = 自动写 compose + 拉镜像 + 启动,全程任务日志可见
+- 原生 Nginx 从官方源码编译安装;其他内置应用当前通过 Compose 部署,安装过程可查看任务日志
 - **多版本 PHP**:可同时安装 8.2 / 7.4 等,不同站点绑定不同版本
 - **自定义应用**:粘贴 docker-compose,在线校验后入库
 

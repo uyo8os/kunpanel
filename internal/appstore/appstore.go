@@ -60,7 +60,18 @@ type Instance struct {
 // ---------- 内置应用目录 ----------
 
 func Templates() []Template {
-	return append(builtinTemplates(), CustomTemplates()...)
+	// 目录只提供维护中的内置应用。自定义应用属于用户数据，仍保留。
+	allowed := map[string]bool{
+		"nginx": true, "php": true, "mysql": true, "mariadb": true,
+		"postgresql": true, "phpmyadmin": true, "redis": true,
+	}
+	var templates []Template
+	for _, tpl := range builtinTemplates() {
+		if allowed[tpl.Key] {
+			templates = append(templates, tpl)
+		}
+	}
+	return append(templates, CustomTemplates()...)
 }
 
 func builtinTemplates() []Template {
@@ -795,6 +806,20 @@ func GetTemplate(key string) (Template, bool) {
 	return Template{}, false
 }
 
+// instanceTemplate keeps retired templates available solely for maintenance of
+// previously installed instances. New installations use GetTemplate instead.
+func instanceTemplate(key string) (Template, bool) {
+	if tpl, ok := GetTemplate(key); ok {
+		return tpl, true
+	}
+	for _, tpl := range builtinTemplates() {
+		if tpl.Key == key {
+			return tpl, true
+		}
+	}
+	return Template{}, false
+}
+
 // EnsurePHPVersion 确保指定版本的 PHP 运行时已安装且运行,返回实例键。
 // 远程宝塔迁移用:跨机无法直连远程 php-fpm,站点按远程版本改由本面板容器服务
 func EnsurePHPVersion(w io.Writer, ver string) (string, error) {
@@ -1251,7 +1276,7 @@ func InstanceDir(key string) string {
 
 // GetCompose 读取实例的 docker-compose.yml 内容
 func GetCompose(key string) (string, error) {
-	if _, ok := GetTemplate(templateKeyOf(key)); !ok {
+	if _, ok := instanceTemplate(templateKeyOf(key)); !ok {
 		return "", fmt.Errorf("未知应用: %s", key)
 	}
 	b, err := os.ReadFile(filepath.Join(InstanceDir(key), "docker-compose.yml"))
@@ -1263,7 +1288,7 @@ func GetCompose(key string) (string, error) {
 
 // SaveCompose 校验并保存编辑后的 compose,然后重建容器使其生效
 func SaveCompose(key, content string) error {
-	if _, ok := GetTemplate(templateKeyOf(key)); !ok {
+	if _, ok := instanceTemplate(templateKeyOf(key)); !ok {
 		return fmt.Errorf("未知应用: %s", key)
 	}
 	if strings.TrimSpace(content) == "" {
@@ -1377,7 +1402,7 @@ func isParseError(out string) bool {
 
 // ReRenderCompose 用当前模板 + 已保存参数重新生成 compose 文件(修复损坏/旧格式文件)
 func ReRenderCompose(key string) error {
-	tpl, ok := GetTemplate(templateKeyOf(key))
+	tpl, ok := instanceTemplate(templateKeyOf(key))
 	if !ok {
 		return fmt.Errorf("未知应用: %s", key)
 	}

@@ -51,9 +51,9 @@ PAGES.dashboard = {
 
     // 新手引导(四步上手;全部完成或手动关闭后不再显示)
     var guideSteps = [
-      { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "应用商店、PHP、数据库都依赖它,点一下自动装", go: "docker", btn: "去安装" },
+      { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "当前 PHP 和数据库等应用需要 Docker,原生 Nginx 无需 Docker", go: "docker", btn: "去安装" },
       { no: 2, done: sites.length > 0, title: "创建第一个网站", desc: "填个域名就行,支持静态页面、PHP 程序和反向代理", go: "websites", btn: "去建站" },
-      { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、WordPress 等常用软件一键安装", go: "apps", btn: "去商店" },
+      { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、MariaDB、PostgreSQL 等软件一键安装", go: "apps", btn: "去商店" },
       { no: 4, done: !!((st.entrance && st.entrance !== "-") || st.ssl || st.totp_enabled), title: "加固面板安全", desc: "开启安全入口 / HTTPS / 两步验证,任一项即可", go: "settings", btn: "去设置" },
     ];
     var guideDone = guideSteps.filter(function(x) { return x.done; }).length;
@@ -266,7 +266,7 @@ PAGES.websites = {
     };
 
     const nginxAlert = nginx.mode === "none"
-      ? '<div class="alert alert-warning page-fade"><span class="alert-ico">' + I("warn") + '</span>未检测到 Nginx / OpenResty,网站功能依赖它。<button class="btn btn-sm btn-primary" id="btn-install-openresty">去应用商店安装</button></div>'
+      ? '<div class="alert alert-warning page-fade"><span class="alert-ico">' + I("warn") + '</span>未检测到网站网关，请先安装 Nginx。<button class="btn btn-sm btn-primary" id="btn-install-openresty">去应用商店安装</button></div>'
       : '<div class="alert alert-info page-fade"><span class="alert-ico">' + I("info") + "</span>当前使用 " + (nginx.mode === "container" ? (nginx.target === "kun-nginx" ? "面板管理的 Nginx 容器 (kun-nginx)" : "面板管理的 OpenResty 容器 (kun-openresty)") : "宿主机 Nginx") + "</div>";
 
     el.innerHTML = nginxAlert + `
@@ -4113,7 +4113,7 @@ PAGES.plugins = {
         '<div style="margin-bottom:16px">' + iconBox("shield", 64) + "</div>" +
         '<h3 style="font-size:18px;margin-bottom:8px">WAF 防火墙</h3>' +
         '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:6px">CC 攻击防护、IP/UA 黑白名单、URL 白名单、SQL 注入 / XSS / 文件包含 / 命令执行 / 扫描器拦截、IP 临时封禁、拦截日志</p>' +
-        '<p style="color:var(--text-3);font-size:12.5px;margin-bottom:20px">依赖: Nginx 或 OpenResty(应用商店一键安装)<br><span style="font-size:11.5px">对 Nginx 开启时,面板会自动编译替换为带 Lua 引擎的 nginx 镜像(首次约 5-8 分钟),站点配置不受影响</span></p>' +
+        '<p style="color:var(--text-3);font-size:12.5px;margin-bottom:20px">内置 WAF 仅支持已有的 Nginx 或 OpenResty 容器，原生 Nginx 请使用独立 WAF。<br><span style="font-size:11.5px">对 Nginx 容器开启时，面板会编译替换为带 Lua 引擎的镜像。</span></p>' +
         '<button class="btn btn-primary" id="waf-install">' + I("download") + ' 安装插件</button> ' +
         '<a class="btn btn-plain" href="#/apps">去安装 Nginx</a></div>';
       qs("#waf-install", el).onclick = function() {
@@ -6881,7 +6881,7 @@ PAGES.docker = {
       el.innerHTML = '<div class="card" style="max-width:520px;margin:48px auto;text-align:center;padding:48px 36px">' +
         '<div style="margin-bottom:18px">' + iconBox("cube", 68) + "</div>" +
         '<h3 style="font-size:18px;margin-bottom:8px">Docker 容器环境</h3>' +
-        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:24px">安装后可管理容器、镜像、网络与数据卷,应用商店全部应用依赖 Docker</p>' +
+        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:24px">安装后可管理容器、镜像、网络与数据卷;当前 PHP 和数据库等应用需要 Docker,原生 Nginx 无需 Docker</p>' +
         '<div style="display:flex;flex-direction:column;gap:12px;align-items:center">' +
         '<select class="select" id="dk-mirror" style="width:100%;max-width:320px;padding:10px 12px;border-radius:10px;font-size:13px">' +
         '<option value="auto">自动选择镜像源</option>' +

@@ -103,7 +103,7 @@ docker run -d --name kunpanel -p 20000:20000 \
 
 ### 🗄 数据库 · 应用 · 容器
 - MySQL / MariaDB / PostgreSQL / Redis 管理:SQL 控制台、备份导入导出、root 改密、phpMyAdmin 快捷入口
-- 应用商店 **17+ 应用**一键部署(WordPress / Nginx / OpenResty / 多版本 PHP / MySQL / Redis / 坤发卡 / NAT Cloud 等),官方多版本可选;**自定义应用**(compose 在线校验)
+- 应用商店提供 Nginx、PHP、MySQL、MariaDB、PostgreSQL、phpMyAdmin 和 Redis;支持**自定义应用**(Compose 在线校验)
 - 容器 / 镜像 / 网络 / 卷管理,容器终端,资源限制热更新,日志轮转配置
 
 ### 📂 文件 · 任务 · 监控

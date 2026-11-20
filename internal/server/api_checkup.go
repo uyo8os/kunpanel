@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"kunpanel/internal/appstore"
 	"kunpanel/internal/config"
 	"kunpanel/internal/cronx"
 	"kunpanel/internal/dockerx"
@@ -213,10 +212,6 @@ func (s *Server) handlePanelCheckup(w http.ResponseWriter, r *http.Request) {
 
 // installedApp 检查应用是否已安装(存在 compose 实例目录)
 func installedApp(key string) bool {
-	_, ok := appstore.GetTemplate(key)
-	if !ok {
-		return false
-	}
 	return dirExists(filepath.Join(config.DataDir(), "apps", key))
 }
 
