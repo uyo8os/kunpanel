@@ -113,6 +113,10 @@ func run(w io.Writer, timeout time.Duration, dir, name string, args ...string) e
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	if dir != "" {
+		// Keep compiler temporary files on the same filesystem as the build.
+		cmd.Env = append(cmd.Environ(), "TMPDIR="+dir)
+	}
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
@@ -597,11 +601,12 @@ func Install(version string, w io.Writer) error {
 		if err = dependencies(w); err != nil {
 			return err
 		}
-		work, err := os.MkdirTemp("", "kunpanel-nginx-build-")
+		work, err := os.MkdirTemp(root(), ".build-")
 		if err != nil {
-			return err
+			return fmt.Errorf("创建 Nginx 编译目录失败: %w", err)
 		}
 		defer os.RemoveAll(work)
+		fmt.Fprintln(w, "Nginx 编译目录:", work)
 		base := "https://nginx.org/download/nginx-" + version + ".tar.gz"
 		fmt.Fprintln(w, "下载官方 Nginx", version, "...")
 		src, err := fetch(base, 16<<20)

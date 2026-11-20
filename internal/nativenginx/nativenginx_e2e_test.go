@@ -34,9 +34,9 @@ func TestNativeNginxEndToEnd(t *testing.T) {
 		t.Fatalf("service unit already exists or cannot be checked: %v", err)
 	}
 	// t.TempDir uses mode 0700, preventing the unprivileged Nginx worker
-	// from traversing it to serve files. /tmp is traversable in the isolated
-	// Linux test environment; only this test's own directory is removed.
-	dir, err := os.MkdirTemp("/tmp", "kunpanel-native-nginx-e2e-")
+	// from traversing it to serve files. Set TMPDIR to a traversable,
+	// disk-backed directory such as /var/tmp when testing with a small /tmp.
+	dir, err := os.MkdirTemp(os.TempDir(), "kp-nginx-e2e-")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,6 +45,8 @@ func TestNativeNginxEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("KP_DATA_DIR", dir)
+	// An unavailable default temporary directory must not block a build.
+	t.Setenv("TMPDIR", filepath.Join(dir, "unavailable-system-temp"))
 	confDir := filepath.Join(dir, "websites", "conf.d")
 	if err := os.MkdirAll(confDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -114,6 +116,9 @@ func TestNativeNginxEndToEnd(t *testing.T) {
 	checkNativeHTTPS(t, httpsClient)
 	if err := Install(mainline, os.Stdout); err != nil {
 		t.Fatalf("upgrade %s: %v", mainline, err)
+	}
+	if builds, err := filepath.Glob(filepath.Join(root(), ".build-*")); err != nil || len(builds) != 0 {
+		t.Fatalf("build directories after installation and upgrade: %v (%v)", builds, err)
 	}
 	checkNativeHTTP(t)
 	checkNativeHTTPS(t, httpsClient)

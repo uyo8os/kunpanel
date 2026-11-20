@@ -118,6 +118,10 @@ func run(w io.Writer, timeout time.Duration, dir, name string, args ...string) e
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
+	if dir != "" {
+		// Keep compiler temporary files on the same filesystem as the build.
+		cmd.Env = append(cmd.Environ(), "TMPDIR="+dir)
+	}
 	cmd.Stdout = w
 	cmd.Stderr = w
 	if err := cmd.Run(); err != nil {
@@ -458,6 +462,14 @@ func validateModules(output string) error {
 	return nil
 }
 
+func createBuildDir(minor string) (string, error) {
+	dir := root(minor)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(dir, ".build-")
+}
+
 // Install verifies selected official release and compiles a private PHP-FPM service.
 func Install(minor, version string, w io.Writer) error {
 	mu.Lock()
@@ -537,11 +549,12 @@ func Install(minor, version string, w io.Writer) error {
 	if err := dependencies(w); err != nil {
 		return err
 	}
-	work, err := os.MkdirTemp("", "kunpanel-php-build-")
+	work, err := createBuildDir(m)
 	if err != nil {
-		return err
+		return fmt.Errorf("创建 PHP 编译目录失败: %w", err)
 	}
 	defer os.RemoveAll(work)
+	fmt.Fprintln(w, "PHP 编译目录:", work)
 	fmt.Fprintf(w, "下载 PHP 官方源码 %s ...\n", version)
 	src, err := fetch("https://www.php.net/distributions/"+rel.Filename, 100<<20)
 	if err != nil {

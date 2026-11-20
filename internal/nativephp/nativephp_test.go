@@ -1,16 +1,48 @@
 package nativephp
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestBuildDoesNotUseSystemTemp(t *testing.T) {
+	dataDir := t.TempDir()
+	systemTemp := filepath.Join(dataDir, "unavailable-system-temp")
+	t.Setenv("KP_DATA_DIR", dataDir)
+	t.Setenv("TMPDIR", systemTemp)
+	t.Setenv("TEMP", systemTemp)
+	t.Setenv("TMP", systemTemp)
+	work, err := createBuildDir("8.4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dataDir, "native", "php", "8.4"); filepath.Dir(work) != want {
+		t.Fatalf("build directory = %s, want a child of %s", work, want)
+	}
+	if runtime.GOOS != "linux" {
+		return
+	}
+	source := filepath.Join(work, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run(&out, 5*time.Second, source, "sh", "-c", `printf '%s' "$TMPDIR"`); err != nil {
+		t.Fatalf("run build command: %v: %s", err, out.String())
+	}
+	if out.String() != source {
+		t.Fatalf("build command TMPDIR = %q, want %q", out.String(), source)
+	}
+}
 
 type releaseRoundTripper func(*http.Request) (*http.Response, error)
 
