@@ -274,7 +274,7 @@
 - 修改端口 / 安全入口 / 管理员密码(改密全端下线)/ 面板名称
 - 面板 SSL:上传证书一键开启 HTTPS
 - 语言与外观(深色模式)
-- **在线更新**:一键升级到最新版(国内自动走加速通道,SHA-256 校验保证完整性与来源)
+- **在线更新**:从 GitHub Releases 一键升级到最新版,并校验安装包的 SHA-256
 - 面板备份/恢复:打包全部配置,换机迁移利器
 
 > 更新不会影响网站与数据;更新后浏览器若提示版本变化,刷新页面即可。
@@ -290,7 +290,7 @@ SSH 执行 `/opt/kunpanel/bin/kunpanel reset`,按提示重置。重置后所有�
 入口在 `/opt/kunpanel/data/config.json` 的 `entrance` 字段(空=关闭);端口同文件 `port` 字段。或在面板设置里改。
 
 **Q3:国内服务器 GitHub 连不上?**
-安装脚本与面板「在线更新」已内置加速兜底,无需操作;手动下载也可用 Release 资产离线安装(`--offline`)。
+可手动下载 GitHub Release 资产,使用安装脚本的 `--offline` 参数离线安装。
 
 **Q4:Docker 发布的端口外面能访问,防火墙没拦?**
 Docker 直接写 iptables DOCKER 链,绕过 ufw/firewalld。到 **安全 → 容器端口管控** 封禁,或用 WAF 管控。
@@ -319,5 +319,4 @@ Docker 直接写 iptables DOCKER 链,绕过 ufw/firewalld。到 **安全 → 容
 
 ## 交流
 
-- QQ 群:**307386089**(反馈 bug / 功能建议 / 运维交流)
-- 问题反馈:[GitHub Issues](https://github.com/kungec/kunpanel/issues)
+- 问题反馈:[GitHub Issues](https://github.com/uyo8os/kunpanel/issues)

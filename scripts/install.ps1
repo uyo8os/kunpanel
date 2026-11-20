@@ -25,7 +25,7 @@ param(
 $ErrorActionPreference = "Stop"
 $KP_DIR = "C:\kunpanel"
 $SERVICE = "kunpanel"
-$REPO_URL = "https://github.com/kungec/kunpanel/releases/download"
+$REPO_URL = "https://github.com/uyo8os/kunpanel/releases/download"
 
 function Write-Info($msg)  { Write-Host "[信息] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)    { Write-Host "[成功] $msg" -ForegroundColor Green }
@@ -77,7 +77,7 @@ if ($LocalFile -ne "") {
 } else {
   # latest = 直接取最新 release 的无版本产物;指定版本则用带版本产物
   if ($Version -eq "latest") {
-    $url = "https://github.com/kungec/kunpanel/releases/latest/download/kunpanel_windows_$archTag.zip"
+    $url = "https://github.com/uyo8os/kunpanel/releases/latest/download/kunpanel_windows_$archTag.zip"
   } else {
     $url = "$REPO_URL/$Version/kunpanel_${Version}_windows_$archTag.zip"
   }

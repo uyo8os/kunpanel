@@ -555,7 +555,7 @@ function helpCenter() {
     ]},
     { cat: "应用与更新", ico: "store", items: [
       { q: "应用卸载后数据会丢吗?", a: "普通卸载保留数据卷,重新安装后数据还在;只有卸载时明确勾选「含数据目录」才会彻底清除。" },
-      { q: "在线更新失败怎么办?", a: "更新自动在 CNB → GitCode → Gitee 三个源之间回退;全部失败通常是服务器出网受限,请稍后重试。" },
+      { q: "在线更新失败怎么办?", a: "更新从 GitHub Releases 获取;如果失败,请检查服务器能否访问 GitHub 后重试。" },
       { q: "服务器负载 / 内存高怎么排查?", a: "「容器」页看哪个容器占用高;「监控 → 进程管理」按 CPU/内存排序;「面板设置 → 系统清理」可一键清理缓存垃圾。" },
     ]},
   ];
@@ -569,7 +569,7 @@ function helpCenter() {
         "</div></details>";
     });
   });
-  body += '<div class="help" style="margin-top:12px">提示:各功能页顶部都有白话说明;遇到问题可加入交流群 307386089。</div></div>';
+  body += '<div class="help" style="margin-top:12px">提示:各功能页顶部都有白话说明。</div></div>';
   var m = openLayer({ title: "新手帮助 · 常见问题", width: 640, body: body,
     footer: '<button class="btn btn-primary" data-act="ok">知道了</button>' });
   qs('[data-act="ok"]', m.el).onclick = m.close;

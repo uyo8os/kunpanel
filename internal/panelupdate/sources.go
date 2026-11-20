@@ -1,10 +1,8 @@
-// 面板在线更新:多源检查与下载(CNB → GitCode → Gitee 依次回退)。
-// 任一源可用即完成检查/下载;来源见 README 与 release 说明。
+// 面板在线更新:从 GitHub Releases 检查版本并下载安装包。
 package panelupdate
 
 import (
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -20,13 +18,7 @@ import (
 	"kunpanel/internal/notifyx"
 )
 
-// 三个发布平台的匿名直链
-const (
-	cnbRepo        = "cnb.cool/kunge-nexa/kunpanel"
-	gitcodeAPI     = "https://gitcode.com/api/v5/repos/NEXAB/kunpanel"
-	gitcodeDistRef = "dist" // GitCode 附件走 dist 分支的仓库内文件(整文件或 .partNNN 分块)
-	giteeRepo      = "NEXAB/kunpanel"
-)
+const githubRepo = "uyo8os/kunpanel"
 
 const uaHeader = "kunpanel-updater"
 
@@ -97,119 +89,9 @@ type release struct {
 	PublishedAt string `json:"published_at"`
 }
 
-// ---------- 三个更新源 ----------
-
-// cnbLatest CNB 最新版本(匿名,Accept 需带 vnd.cnb.api+json)
-func cnbLatest() (*release, error) {
-	req, _ := http.NewRequest("GET", "https://"+cnbRepo+"/-/releases/latest", nil)
-	req.Header.Set("Accept", "application/vnd.cnb.api+json")
-	req.Header.Set("User-Agent", uaHeader)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-	var r release
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&r); err != nil {
-		return nil, err
-	}
-	if r.TagName == "" {
-		return nil, fmt.Errorf("无 tag_name")
-	}
-	return &r, nil
-}
-
-func cnbAssetURL(tag, asset string) string {
-	return "https://" + cnbRepo + "/-/releases/download/" + tag + "/" + asset
-}
-
-// gitcodeLatest GitCode 最新版本:优先 releases 列表(新建仓库可能被内容审核
-// 拦截而建不出 release),失败回退 tags 列表按语义化版本取最大
-func gitcodeLatest() (*release, error) {
-	s, err := httpGetString(gitcodeAPI+"/releases", 2<<20)
-	if err == nil {
-		var rs []release
-		if json.Unmarshal([]byte(s), &rs) == nil && len(rs) > 0 && rs[0].TagName != "" {
-			return &rs[0], nil
-		}
-	}
-	s, err = httpGetString(gitcodeAPI+"/tags", 1<<20)
-	if err != nil {
-		return nil, err
-	}
-	var tags []struct {
-		Name string `json:"name"`
-	}
-	if json.Unmarshal([]byte(s), &tags) != nil || len(tags) == 0 {
-		return nil, fmt.Errorf("无 release 且无 tag")
-	}
-	best := ""
-	for _, t := range tags {
-		if _, ok := Semver(t.Name); ok && newer(t.Name, best) {
-			best = t.Name
-		}
-	}
-	if best == "" {
-		return nil, fmt.Errorf("tag 均非语义化版本")
-	}
-	return &release{TagName: best, Name: best}, nil
-}
-
-// gitcodeFileBytes 经 contents API 读 dist 分支仓库内文件(匿名可读,base64)
-func gitcodeFileBytes(path string) ([]byte, error) {
-	s, err := httpGetString(gitcodeAPI+"/contents/"+path+"?ref="+gitcodeDistRef, 8<<20)
-	if err != nil {
-		return nil, err
-	}
-	var obj struct {
-		Content string `json:"content"`
-	}
-	if err := json.Unmarshal([]byte(s), &obj); err != nil {
-		return nil, err
-	}
-	if obj.Content == "" {
-		return nil, fmt.Errorf("空内容")
-	}
-	return base64.StdEncoding.DecodeString(strings.ReplaceAll(obj.Content, "\n", ""))
-}
-
-// gitcodeDownload 下载 dist 分支文件:>1MB 的安装包在仓库内以 .partNNN 分块存放,
-// 此处逐块拼接还原;≤1MB(如 SHA256SUMS)整文件直取。
-func gitcodeDownload(path string, dst string, w io.Writer) error {
-	if b, err := gitcodeFileBytes(path); err == nil {
-		return os.WriteFile(dst, b, 0o755)
-	}
-	f, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	total := 0
-	for i := 0; i < 200; i++ {
-		b, err := gitcodeFileBytes(fmt.Sprintf("%s.part%03d", path, i))
-		if err != nil {
-			if i == 0 {
-				return fmt.Errorf("GitCode 上不存在 %s(整文件与分块均未找到)", path)
-			}
-			break
-		}
-		if _, werr := f.Write(b); werr != nil {
-			return werr
-		}
-		total += len(b)
-		if total > 512<<20 {
-			return fmt.Errorf("分块超过 512MB,异常中止")
-		}
-	}
-	fmt.Fprintf(w, "GitCode 分块下载完成(%d 字节)\n", total)
-	return nil
-}
-
-func giteeLatest() (*release, error) {
-	s, err := httpGetString("https://gitee.com/api/v5/repos/"+giteeRepo+"/releases/latest", 1<<20)
+// githubLatest 获取最新的 GitHub Release。
+func githubLatest() (*release, error) {
+	s, err := httpGetString("https://api.github.com/repos/"+githubRepo+"/releases/latest", 1<<20)
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +105,8 @@ func giteeLatest() (*release, error) {
 	return &r, nil
 }
 
-func giteeAssetURL(tag, asset string) string {
-	return "https://gitee.com/" + giteeRepo + "/releases/download/" + tag + "/" + asset
+func githubAssetURL(tag, asset string) string {
+	return "https://github.com/" + githubRepo + "/releases/download/" + tag + "/" + asset
 }
 
 // updateSource 更新源描述
@@ -237,44 +119,20 @@ type updateSource struct {
 
 var sources = []updateSource{
 	{
-		name:   "CNB",
-		latest: cnbLatest,
+		name:   "GitHub",
+		latest: githubLatest,
 		sums: func(tag string) (string, error) {
-			return httpGetString(cnbAssetURL(tag, "SHA256SUMS"), 1<<20)
+			return httpGetString(githubAssetURL(tag, "SHA256SUMS"), 1<<20)
 		},
 		download: func(tag, asset, dst string, w io.Writer) error {
-			return downloadFile(cnbAssetURL(tag, asset), dst, w)
-		},
-	},
-	{
-		name:   "GitCode",
-		latest: gitcodeLatest,
-		sums: func(tag string) (string, error) {
-			b, err := gitcodeFileBytes("dist/assets/" + tag + "/SHA256SUMS")
-			if err != nil {
-				return "", err
-			}
-			return string(b), nil
-		},
-		download: func(tag, asset, dst string, w io.Writer) error {
-			return gitcodeDownload("dist/assets/"+tag+"/"+asset, dst, w)
-		},
-	},
-	{
-		name:   "Gitee",
-		latest: giteeLatest,
-		sums: func(tag string) (string, error) {
-			return httpGetString(giteeAssetURL(tag, "SHA256SUMS"), 1<<20)
-		},
-		download: func(tag, asset, dst string, w io.Writer) error {
-			return downloadFile(giteeAssetURL(tag, asset), dst, w)
+			return downloadFile(githubAssetURL(tag, asset), dst, w)
 		},
 	},
 }
 
 // ---------- 检查 ----------
 
-// Check 依次尝试三个更新源,第一个成功者生效
+// Check 检查 GitHub Releases 的最新版本。
 func Check() (*Info, error) {
 	var lastErr error
 	for _, src := range sources {
@@ -298,7 +156,7 @@ func Check() (*Info, error) {
 		mu.Unlock()
 		return info, nil
 	}
-	return nil, fmt.Errorf("三个更新源(CNB/GitCode/Gitee)均不可达: %v", lastErr)
+	return nil, fmt.Errorf("GitHub 更新源不可达: %v", lastErr)
 }
 
 // Cached 上次检查结果(可能为 nil)

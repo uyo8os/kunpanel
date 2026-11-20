@@ -611,7 +611,7 @@ func InstallPanel(n Node, logf func(string)) error {
 		return err
 	}
 	defer cl.Close()
-	script := "curl -fsSL https://raw.githubusercontent.com/kungec/kunpanel/main/install.sh | bash 2>&1; echo KUNINSTALL_EXIT=$?"
+	script := "curl -fsSL https://raw.githubusercontent.com/uyo8os/kunpanel/main/scripts/install.sh | bash 2>&1; echo KUNINSTALL_EXIT=$?"
 	sess, err := cl.NewSession()
 	if err != nil {
 		return err

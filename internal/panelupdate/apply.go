@@ -30,7 +30,7 @@ func Apply(tag string, w io.Writer) error {
 	for _, src := range sources {
 		fmt.Fprintf(w, "更新源 %s:下载 %s ...\n", src.name, tag)
 		if err := src.download(tag, asset, archive, w); err != nil {
-			fmt.Fprintf(w, "源 %s 下载失败: %v,尝试下一源 ...\n", src.name, err)
+			fmt.Fprintf(w, "源 %s 下载失败: %v,更新失败 ...\n", src.name, err)
 			lastErr = err
 			continue
 		}
@@ -38,7 +38,7 @@ func Apply(tag string, w io.Writer) error {
 		fmt.Fprintf(w, "校验安装包完整性(SHA-256,来源 %s)...\n", src.name)
 		sums, err := src.sums(tag)
 		if err != nil {
-			fmt.Fprintf(w, "源 %s 获取校验和失败: %v,尝试下一源 ...\n", src.name, err)
+			fmt.Fprintf(w, "源 %s 获取校验和失败: %v,更新失败 ...\n", src.name, err)
 			lastErr = err
 			continue
 		}
@@ -56,7 +56,7 @@ func Apply(tag string, w io.Writer) error {
 		fmt.Fprintln(w, "校验通过(来源 "+src.name+")")
 		return installFrom(archive, w)
 	}
-	return fmt.Errorf("三个更新源均下载失败: %v", lastErr)
+	return fmt.Errorf("GitHub 更新源下载失败: %v", lastErr)
 }
 
 // installFrom 解压并替换本机二进制,触发重启

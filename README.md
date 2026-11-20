@@ -6,44 +6,17 @@
 
 **轻量级服务器运维管理面板 —— Go 单二进制,开箱即用**
 
-[![](https://img.shields.io/badge/版本-v2.98.0-3b82f6?style=flat-square)](https://gitee.com/NEXAB/kunpanel/releases)
+[![](https://img.shields.io/badge/版本-v2.98.0-3b82f6?style=flat-square)](https://github.com/uyo8os/kunpanel/releases)
 [![](https://img.shields.io/badge/Go-1.27+-00ADD8?style=flat-square)](https://golang.org)
 [![](https://img.shields.io/badge/平台-Linux%20%7C%20Windows-lightgrey?style=flat-square)](./README.md)
 [![](https://img.shields.io/badge/License-MIT-green?style=flat-square)](./LICENSE)
-[![](https://img.shields.io/badge/QQ群-307386089-eb1923?style=flat-square)](#交流群)
 [![](https://img.shields.io/badge/📖_使用教程-TUTORIAL-8a2be2?style=flat-square)](docs/TUTORIAL.md)
-
-**🎉 隆重感谢金牌赞助商 🎉**
-
-[![跨境 VPS · 专注家宽住宅 IP 云服务器](docs/sponsor-banner.svg)](https://www.kjvps.com)
-
-💬 交流 QQ 群:**`307386089`** —— 反馈 bug / 功能建议 / 运维经验交流
-
-</div>
 
 ---
 
 > 📖 **[完整使用教程(TUTORIAL.md)](docs/TUTORIAL.md)** —— 首次登录、建站、SSL、迁移、WAF、计划任务、FAQ,手把手图文步骤。
 
 ---
-
-## 🔄 面板一键迁移(宝塔 / 1Panel 双向互通)
-
-从宝塔或 1Panel 换到坤面板(或换回去),**全程自动化、随时可回滚**:
-
-### 宝塔 → 坤面板
-- **远程迁移,无脑傻瓜式**:只需输入宝塔服务器的 **IP + root 密码**,自动 SSH 对接、扫描站点、搬运文件
-- **一键搬全家**:域名、网站文件、SSL 证书、伪静态/自定义配置(**逐条保真保留,不是重新生成**)、计划任务、数据库(可选),PHP 站点版本自动映射并自动装好对应运行时
-- **零停机切换**:迁移后反向代理上游自动回源旧机,DNS 切换前网站照常访问;证书导入后异步重签接管续期
-- **随时可回滚**:迁移不动宝塔原有站点与数据,宝塔原计划任务自动注释防双跑
-
-### 1Panel → 坤面板
-- **本机迁移**:自动识别 1Panel(v1/v2),迁移 OpenResty 站点(静态/反代/PHP)、SSL 证书与 MySQL 数据库(从 1Panel 容器 mysqldump 导入);静态站文件自动拷贝、反代上游自动改写并建端口转发
-- **远程迁移**:同样只需输入 1Panel 服务器的 **IP + root 密码**,SSH 自动对接流式搬运;反代/PHP 上游回源远程机,**DNS 切换前零停机**
-- **流量切换带回滚**:切换时自动停用 1Panel OpenResty(禁自启),逐域名×逐路径验证状态码,**任何异常自动回滚**
-
-### 坤面板 → 宝塔 / 1Panel(反向导出)
-- 站点一键导出为两个面板可直接生效的形态(目录 + 配置 + 证书 + 自动重载)
 
 ## ⚡ 一键安装
 
@@ -53,35 +26,29 @@
 x86_64 / aarch64 / armv7 三架构,自动识别 systemd / OpenRC / SysV:
 
 ```bash
-curl -fsSL 'https://cnb.cool/kunge-nexa/kunpanel/-/git/raw/main/scripts/install.sh' -o kp-install.sh && bash kp-install.sh
-```
-
-备用源(脚本地址替换为下者即可):
-
-```bash
-curl -fsSL 'https://gitee.com/NEXAB/kunpanel/raw/main/scripts/install.sh' -o kp-install.sh && bash kp-install.sh
+curl -fsSL 'https://raw.githubusercontent.com/uyo8os/kunpanel/main/scripts/install.sh' -o kp-install.sh && bash kp-install.sh
 ```
 
 安装完成自动输出:**随机端口 + 随机安全入口 + 随机管理员密码**。
-下载全程三源自动回退(CNB → GitCode → Gitee),面板「在线更新」同样三源回退,国内服务器无需科学上网。
+安装包和面板「在线更新」使用 GitHub Releases。
 
 <details>
 <summary>📦 安装参数与卸载</summary>
 
 ```bash
-bash install.sh --port 20000 --username admin --password yourpwd   # 自定义初始化
-bash install.sh --with-docker            # 同时安装 Docker 引擎(自动配国内镜像源)
-bash install.sh --mirror aliyun          # Docker 使用阿里云镜像源
-bash install.sh --proxy https://gh-proxy.com/   # GitHub 下载加速
-bash install.sh --version v2.84.0        # 安装指定版本
-bash install.sh --offline ./kunpanel_linux_amd64.tar.gz   # 离线安装(含 SHA-256 校验)
-bash install.sh --uninstall              # 卸载
+bash kp-install.sh --port 20000 --username admin --password yourpwd   # 自定义初始化
+bash kp-install.sh --with-docker            # 同时安装 Docker 引擎(自动配国内镜像源)
+bash kp-install.sh --mirror aliyun          # Docker 使用阿里云镜像源
+bash kp-install.sh --proxy https://gh-proxy.com/   # GitHub 下载加速
+bash kp-install.sh --version v2.84.0        # 安装指定版本
+bash kp-install.sh --offline ./kunpanel_linux_amd64.tar.gz   # 离线安装(含 SHA-256 校验)
+bash kp-install.sh --uninstall              # 卸载
 ```
 </details>
 
 ### Windows
 
-下载 [Release](https://gitee.com/NEXAB/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
+下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
 解压后**右键以管理员身份运行 `install.bat`** —— 自动注册 Windows 服务、放行防火墙并输出访问地址。
 
 ### 🐳 Docker
@@ -152,7 +119,7 @@ docker run -d --name kunpanel -p 20000:20000 \
 | 会话 | HMAC-SHA256 签名令牌,改密即轮换密钥强制下线 |
 | 注入 | 域名白名单、compose 参数转义、解压 ZipSlip 防护、SQL 标识符白名单、反代 Host 头注入防护 |
 | 传输 | CSP 脚本哈希白名单(无 unsafe-inline)、HSTS 可选、面板 HTTPS;远程迁移 SSH 指纹 TOFU 校验 |
-| 供应链 | 升级包 SHA-256 校验和验证(直连 GitHub 优先,国内回退加速代理并明确标注信任来源) |
+| 供应链 | 升级包 SHA-256 校验和验证 |
 | 沙箱 | systemd NoNewPrivileges / PrivateTmp / ProtectKernelTunables / ProtectControlGroups(v2.75.5 移除 ProtectSystem:其 /usr、/etc 只读会阻断包管理与 Docker 安装)/ 私网自动封禁排除 |
 | 审计 | 登录与变更操作全留痕、真实状态码、安全回归测试锁定 |
 
@@ -162,23 +129,13 @@ docker run -d --name kunpanel -p 20000:20000 \
 ## 🛠 从源码构建
 
 ```bash
-git clone https://gitee.com/NEXAB/kunpanel.git && cd kunpanel
+git clone https://github.com/uyo8os/kunpanel.git && cd kunpanel
 bash build.sh v2.78.1     # 产出 linux(amd64/arm64/arm) + windows 全平台安装包
 ```
 
 Go 1.27+,前端为原生 JS(`go:embed` 内嵌),无 Node 构建步骤。
 
-## 🤝 赞助商
-
-<div align="center">
-
-[![跨境 VPS](docs/sponsor-banner.svg)](https://www.kjvps.com)
-
-**感谢 [跨境 VPS](https://www.kjvps.com) 为坤面板提供服务器资源赞助**
-家宽住宅 IP · 原生 IP · 大带宽 · 高防 —— [www.kjvps.com](https://www.kjvps.com)
-
-</div>
-
 ## 📄 License
 
-[MIT](LICENSE) · 交流 QQ 群:**307386089**
+[MIT](LICENSE) 
+
