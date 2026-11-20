@@ -303,10 +303,17 @@ function toast(msg, type = "success", ms = 2600, onclick) {
 
 /* ---------- Modal ---------- */
 let _modalStack = [];
+let _modalCloseTimer = null;
 function modal({ title, body, footer, width = 540, onClose }) {
   clearBusyBtns(); // 弹窗打开本身就是反馈,清掉触发按钮上的转圈
   const mask = qs("#modal-mask");
   const box = qs("#modal-box");
+  // 上一个窗口可能还在播放关闭动画，不能让它的延迟清理关闭新窗口。
+  if (_modalCloseTimer !== null) {
+    clearTimeout(_modalCloseTimer);
+    _modalCloseTimer = null;
+  }
+  mask.classList.remove("closing");
   box.style.width = Math.min(width, window.innerWidth - 24) + "px";
   box.innerHTML =
     '<div class="modal-header"><h3>' + esc(title) + '</h3><span class="modal-actions">' +
@@ -323,12 +330,16 @@ function modal({ title, body, footer, width = 540, onClose }) {
   qs(".modal-maxbtn", box).onclick = toggleMax;
   qs(".modal-header h3", box).ondblclick = toggleMax;
   let vetoClose = null; // 返回 true 表示阻止本次关闭(未保存改动保护)
+  let closed = false;
   const doClose = () => {
+    if (closed) return;
+    closed = true;
     mask.classList.add("closing");
-    setTimeout(() => {
+    _modalCloseTimer = setTimeout(() => {
       mask.style.display = "none";
       mask.classList.remove("closing");
       box.innerHTML = "";
+      _modalCloseTimer = null;
     }, 140);
     _modalStack = _modalStack.filter((m) => m !== close);
     if (onClose) onClose();
