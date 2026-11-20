@@ -25,6 +25,13 @@ func (s *Server) handleAppTemplates(w http.ResponseWriter, r *http.Request) {
 	if list == nil {
 		list = []appstore.Template{}
 	}
+	for i := range list {
+		if list[i].Key == "php" {
+			list[i].Desc = "从 PHP 官方源码编译的原生 PHP-FPM，支持多个版本共存"
+			list[i].Version = "官方版本"
+			list[i].Params = []appstore.Param{{Key: "Version", Label: "PHP 分支", Type: "select", Required: true, Options: []string{"8.6", "8.5", "8.4", "8.3"}, Help: "安装时从官方获取各分支当前版本"}}
+		}
+	}
 	OK(w, list)
 }
 
@@ -57,6 +64,10 @@ func (s *Server) handleAppInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Key == "nginx" {
 		s.installNativeNginx(w, req.Params)
+		return
+	}
+	if req.Key == "php" {
+		s.installNativePHP(w, req.Params)
 		return
 	}
 	if cliOK, _ := dockerx.Installed(); !cliOK {
@@ -102,6 +113,12 @@ func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
 	if key == "nginx" {
 		if _, ok := appstore.NativeNginxInstance(); ok {
 			s.nativeNginxAction(w, action)
+			return
+		}
+	}
+	if isPHPRuntimeKey(key) {
+		if inst, ok := appstore.NativePHPInstance(key); ok {
+			s.nativePHPAction(w, inst, action)
 			return
 		}
 	}
@@ -203,12 +220,12 @@ var (
 
 func lockAppOp(key string) func() {
 	appOpsMu.Lock()
-	defer appOpsMu.Unlock()
 	mu, ok := appOpLocks[key]
 	if !ok {
 		mu = &sync.Mutex{}
 		appOpLocks[key] = mu
 	}
+	appOpsMu.Unlock()
 	mu.Lock()
 	return mu.Unlock
 }
@@ -221,6 +238,12 @@ func isPHPRuntimeKey(key string) bool {
 // handleAppRuntimeInfo 运行时信息:版本号(PHP/php-fpm/nginx/openresty -v)、PHP 已加载扩展
 func (s *Server) handleAppRuntimeInfo(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if isPHPRuntimeKey(key) {
+		if inst, ok := appstore.NativePHPInstance(key); ok {
+			s.nativePHPInfo(w, inst)
+			return
+		}
+	}
 	if key == "nginx" {
 		if inst, ok := appstore.NativeNginxInstance(); ok {
 			OK(w, map[string]any{"key": key, "version": inst.Params["Version"], "status": nativenginx.Status(), "install_mode": "native"})
@@ -368,6 +391,12 @@ func (s *Server) handleAppRuntimeAction(w http.ResponseWriter, r *http.Request) 
 	action := r.PathValue("action")
 	if action == "" {
 		action = r.URL.Query().Get("action")
+	}
+	if isPHPRuntimeKey(key) {
+		if inst, ok := appstore.NativePHPInstance(key); ok {
+			s.nativePHPRuntimeAction(w, r, inst, action)
+			return
+		}
 	}
 	if key == "nginx" {
 		if _, ok := appstore.NativeNginxInstance(); ok {

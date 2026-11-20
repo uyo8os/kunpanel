@@ -89,6 +89,7 @@ type Site struct {
 	CreatedAt string     `json:"created_at"`
 	Remark    string     `json:"remark"`
 	PhpKey    string     `json:"php_key,omitempty"`  // 使用的 PHP 实例键(php/php82...;空=默认)
+	PHPMode   string     `json:"php_mode,omitempty"` // native 表示连接面板管理的原生 PHP-FPM
 	FpmPass   string     `json:"fpm_pass,omitempty"` // phpfpm 站点:fastcgi 上游(unix:... 或 host:port)
 	// 子域名绑定:子域名指向站点下的子目录(如 m.example.com → example.com/m)
 	Subs []SiteSub `json:"subs,omitempty"`
@@ -379,10 +380,16 @@ func Create(o CreateOpts) (*Site, error) {
 	}
 	if o.SiteType == "php" {
 		// 根目录已最终确定:上游路径=容器内站点子目录(目录名)
-		s.ProxyTo = PhpUpstreamFor(s.PhpKey, filepath.Base(s.Root))
+		if err := bindSitePHP(s, s.PhpKey); err != nil {
+			return nil, err
+		}
 	}
 	if o.SiteType != "proxy" {
-		if err := os.MkdirAll(s.Root, 0o755); err != nil {
+		if s.PHPMode == "native" {
+			if err := prepareNativePHPSiteDirectory(s.Root); err != nil {
+				return nil, err
+			}
+		} else if err := os.MkdirAll(s.Root, 0o755); err != nil {
 			return nil, err
 		}
 		// 容器网关:站点根目录不在默认 roots 下(自定义默认目录/自定义根目录)时,
@@ -425,12 +432,30 @@ echo '</body></html>';
 	}
 	list = append(list, *s)
 	if err := save(); err != nil {
+		list = list[:len(list)-1]
 		return nil, err
 	}
 	if err := writeConf(s); err != nil {
+		if s.PHPMode == "native" {
+			list = list[:len(list)-1]
+			if rollbackErr := save(); rollbackErr != nil {
+				return nil, fmt.Errorf("生成站点配置失败: %v；恢复站点记录失败: %w", err, rollbackErr)
+			}
+		}
 		return nil, err
 	}
-	_ = Reload()
+	if err := Reload(); err != nil && s.PHPMode == "native" {
+		// Nginx has not accepted the new configuration; remove only the
+		// generated config and registration, preserving any site files.
+		if removeErr := os.Remove(filepath.Join(confDir(), s.ID+".conf")); removeErr != nil && !os.IsNotExist(removeErr) {
+			return nil, fmt.Errorf("Nginx 重载失败: %v；移除站点配置失败: %w", err, removeErr)
+		}
+		list = list[:len(list)-1]
+		if rollbackErr := save(); rollbackErr != nil {
+			return nil, fmt.Errorf("Nginx 重载失败: %v；恢复站点记录失败: %w", err, rollbackErr)
+		}
+		return nil, fmt.Errorf("Nginx 重载失败，已撤销站点配置（站点文件保留）: %w", err)
+	}
 	return s, nil
 }
 
@@ -804,6 +829,7 @@ func SetSiteType(id, newType, target, phpKey, proxyHost string) error {
 		mu.Unlock()
 		return fmt.Errorf("站点已经是 %s 类型", newType)
 	}
+	old := *site
 	switch newType {
 	case "proxy":
 		target = strings.TrimSpace(target)
@@ -813,12 +839,15 @@ func SetSiteType(id, newType, target, phpKey, proxyHost string) error {
 		}
 		site.ProxyTo = target
 	case "php":
-		site.PhpKey = normalizePHPKey(phpKey)
-		site.ProxyTo = PhpUpstreamFor(site.PhpKey, filepath.Base(site.Root))
+		if err := bindSitePHP(site, phpKey); err != nil {
+			mu.Unlock()
+			return err
+		}
 	}
 	site.Type = newType
 	site.ProxyHost = SanitizeProxyHost(proxyHost)
 	if err := save(); err != nil {
+		*site = old
 		mu.Unlock()
 		return err
 	}
@@ -829,9 +858,12 @@ func SetSiteType(id, newType, target, phpKey, proxyHost string) error {
 		ensureSitePHPMount(&cp, io.Discard)
 	}
 	if err := writeConf(&cp); err != nil {
-		return err
+		return restoreSiteAfterPHPChange(old, cp, err)
 	}
-	return Reload()
+	if err := Reload(); err != nil {
+		return restoreSiteAfterPHPChange(old, cp, err)
+	}
+	return nil
 }
 
 // siteDirBase 主域名转站点目录名:小写、剥通配符前缀、非法字符转连字符;
@@ -865,7 +897,7 @@ func dirExists(p string) bool {
 // (php:apache 的 DocumentRoot),否则容器看不到站点文件、反代过去全是 404。
 // 幂等:已挂载或实例未安装时静默跳过;默认目录站点走既有 roots:/var/www/html 挂载
 func ensureSitePHPMount(s *Site, w io.Writer) {
-	if s == nil || s.Type != "php" || strings.TrimSpace(s.Root) == "" {
+	if s == nil || s.Type != "php" || s.PHPMode == "native" || strings.TrimSpace(s.Root) == "" {
 		return
 	}
 	if underRootsDir(s.Root) {
@@ -974,7 +1006,15 @@ func writeConf(s *Site) error {
 	b.WriteString(fmt.Sprintf("# 由坤面板生成,请勿手动修改站点 ID: %s\n", s.ID))
 
 	// ACME HTTP-01 挑战目录(^~ 优先于业务 location,静态/代理站点通用)
-	challengeLoc := fmt.Sprintf("    location ^~ /.well-known/acme-challenge/ {\n        root %s;\n    }\n\n", challengeRoot)
+	challengeRootConf := challengeRoot
+	if s.Type == "php" && s.PHPMode == "native" {
+		var err error
+		challengeRootConf, err = nativeNginxLiteral(challengeRoot)
+		if err != nil {
+			return err
+		}
+	}
+	challengeLoc := fmt.Sprintf("    location ^~ /.well-known/acme-challenge/ {\n        root %s;\n    }\n\n", challengeRootConf)
 
 	// HTTPS:证书绑定时同时监听 443;强制跳转时主块仅监听 443,由独立块接管 80
 	redirectActive := s.SslCertID != "" && s.SslRedirect
@@ -1064,7 +1104,18 @@ func writeConf(s *Site) error {
 		}
 		b.WriteString(fmt.Sprintf("    # 流量限制(由坤面板生成)\n    limit_rate %dk;\n\n", s.RateLimit))
 	}
-	switch s.Type {
+	effectiveType := s.Type
+	if s.Type == "php" && s.PHPMode == "native" {
+		if mode.Target != ManagedNginxBinary() {
+			return fmt.Errorf("原生 PHP-FPM 需要面板原生 Nginx")
+		}
+		effectiveType = "nativephp"
+	}
+	switch effectiveType {
+	case "nativephp":
+		if err := writeNativePHPServer(&b, s.FpmPass, s.Root, s.IndexFiles, extraHasRoot); err != nil {
+			return err
+		}
 	case "phpfpm":
 		// PHP-FPM(fastcgi)直连:root 用宿主机原路径(容器内路径映射由面板处理),
 		// 宝塔迁移站点保持代码/目录/PHP 版本完全不变
@@ -1152,7 +1203,7 @@ func writeConf(s *Site) error {
 					b.WriteString(fmt.Sprintf("    ssl_certificate %s;\n    ssl_certificate_key %s;\n", crt, key))
 				}
 			}
-			b.WriteString("    # ACME 证书签发验证\n    location ^~ /.well-known/acme-challenge/ {\n        root " + challengeRoot + ";\n    }\n")
+			b.WriteString("    # ACME 证书签发验证\n    location ^~ /.well-known/acme-challenge/ {\n        root " + challengeRootConf + ";\n    }\n")
 			if wafOn() {
 				b.WriteString("    access_by_lua_file /usr/local/kunwaf/waf.lua;\n")
 			}
@@ -1162,8 +1213,19 @@ func writeConf(s *Site) error {
 				// phpfpm 站点的子域名块同样以 index.php 打头(与主块一致)
 				idx = "index.php index.html index.htm"
 			}
+			if effectiveType == "nativephp" {
+				var err error
+				dir, err = nativeNginxLiteral(dir)
+				if err != nil {
+					return err
+				}
+			}
 			b.WriteString(fmt.Sprintf("    root %s;\n    index %s;\n\n", dir, idx))
-			switch s.Type {
+			switch effectiveType {
+			case "nativephp":
+				if err := writeNativePHPLocations(&b, s.FpmPass, false); err != nil {
+					return err
+				}
 			case "php":
 				b.WriteString(fmt.Sprintf("    location / {\n        proxy_pass %s;\n", strings.TrimSuffix(s.ProxyTo, "/")+"/"+sub.Dir+"/"))
 				b.WriteString(`        proxy_set_header Host $host;
@@ -1530,9 +1592,13 @@ func UpdateSitePhp(id, phpKey string) error {
 		mu.Unlock()
 		return nil // 无变化
 	}
-	site.PhpKey = phpKey
-	site.ProxyTo = PhpUpstreamFor(phpKey, filepath.Base(site.Root))
+	old := *site
+	if err := bindSitePHP(site, phpKey); err != nil {
+		mu.Unlock()
+		return err
+	}
 	if err := save(); err != nil {
+		*site = old
 		mu.Unlock()
 		return err
 	}
@@ -1541,9 +1607,12 @@ func UpdateSitePhp(id, phpKey string) error {
 	// 切换 PHP 实例后,自定义根目录要挂到新实例的容器(kun-<phpKey>)
 	ensureSitePHPMount(&cp, io.Discard)
 	if err := writeConf(&cp); err != nil {
-		return err
+		return restoreSiteAfterPHPChange(old, cp, err)
 	}
-	return Reload()
+	if err := Reload(); err != nil {
+		return restoreSiteAfterPHPChange(old, cp, err)
+	}
+	return nil
 }
 
 // PHPSitesUsing 返回正在使用指定 PHP 实例键的站点域名列表(卸载保护)

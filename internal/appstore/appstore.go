@@ -1,12 +1,12 @@
 package appstore
 
 import (
-	"net/http"
-	"os/exec"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -17,6 +17,7 @@ import (
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
 	"kunpanel/internal/nativenginx"
+	"kunpanel/internal/nativephp"
 	"kunpanel/internal/util"
 )
 
@@ -47,14 +48,14 @@ type Template struct {
 
 // Instance 已安装的应用实例
 type Instance struct {
-	ID        string            `json:"id"`
-	Key       string            `json:"key"`
-	Name      string            `json:"name"`
-	Params    map[string]string `json:"params"`
-	Dir       string            `json:"dir"`
-	CreatedAt string            `json:"created_at"`
-	Status    string            `json:"status"` // 实时填充:running / exited / missing
-	InstallMode string          `json:"install_mode,omitempty"` // native; 旧记录为空表示 Docker
+	ID          string            `json:"id"`
+	Key         string            `json:"key"`
+	Name        string            `json:"name"`
+	Params      map[string]string `json:"params"`
+	Dir         string            `json:"dir"`
+	CreatedAt   string            `json:"created_at"`
+	Status      string            `json:"status"`                 // 实时填充:running / exited / missing
+	InstallMode string            `json:"install_mode,omitempty"` // native; 旧记录为空表示 Docker
 }
 
 // ---------- 内置应用目录 ----------
@@ -820,12 +821,18 @@ func instanceTemplate(key string) (Template, bool) {
 	return Template{}, false
 }
 
-// EnsurePHPVersion 确保指定版本的 PHP 运行时已安装且运行,返回实例键。
-// 远程宝塔迁移用:跨机无法直连远程 php-fpm,站点按远程版本改由本面板容器服务
+// EnsurePHPVersion 为远程宝塔迁移查找已有的同分支 PHP 容器并确保它运行。
 func EnsurePHPVersion(w io.Writer, ver string) (string, error) {
 	list, _ := List()
 	for _, it := range list {
-		if IsPHPRuntimeKey(it.Key) && normalizePHPVersion(it.Params["Version"]) == normalizePHPVersion(ver) {
+		if !IsPHPRuntimeKey(it.Key) || it.InstallMode == "native" {
+			continue
+		}
+		installedVersion := it.Params["Version"]
+		if m, err := nativephp.Minor(installedVersion); err == nil {
+			installedVersion = m
+		}
+		if normalizePHPVersion(installedVersion) == normalizePHPVersion(ver) {
 			if it.Status == "running" {
 				return it.Key, nil
 			}
@@ -836,28 +843,7 @@ func EnsurePHPVersion(w io.Writer, ver string) (string, error) {
 			return it.Key, nil
 		}
 	}
-	// 分配空闲端口(避开已用)
-	used := map[int]bool{}
-	for _, it := range list {
-		if IsPHPRuntimeKey(it.Key) {
-			if pn, e := strconv.Atoi(it.Params["Port"]); e == nil {
-				used[pn] = true
-			}
-		}
-	}
-	port := 8090
-	for used[port] {
-		port++
-	}
-	fmt.Fprintf(w, "   安装 PHP %s 运行时(首次拉取镜像需数分钟)...\n", ver)
-	key, err := Install("php", map[string]string{"Version": ver, "Port": strconv.Itoa(port)})
-	if err != nil {
-		return "", err
-	}
-	if err := Apply(key, "up -d", w); err != nil {
-		return "", err
-	}
-	return key, nil
+	return "", fmt.Errorf("未找到已有 PHP %s 容器运行时；远程宝塔迁移暂不支持自动安装原生 PHP-FPM，请手动迁移或使用已有兼容运行时", ver)
 }
 
 // IsPHPRuntimeKey PHP 多版本实例键:php / php+版本数字(排除 phpmyadmin)
@@ -915,6 +901,11 @@ func List() ([]Instance, error) {
 	for i := range list {
 		if list[i].Key == "nginx" && list[i].InstallMode == "native" {
 			list[i].Status = nativenginx.Status()
+			continue
+		}
+		if IsPHPRuntimeKey(list[i].Key) && list[i].InstallMode == "native" {
+			refreshNativePHPVersion(&list[i])
+			list[i].Status = nativephp.Status(list[i].Params["Minor"])
 			continue
 		}
 		if !cliOK {
@@ -1165,7 +1156,7 @@ func installKunfaka(dir string, params map[string]string) error {
 // (compose build: ./src;升级 = 卸载重装或手动重新下载,镜像随之更新)
 func installKunyingCMS(dir string) error {
 	// 用 tag 引用而非 main:GitHub 对 main 的 archive tar.gz 有缓存,
-// Dockerfile 修复后可能长时间仍下发旧包;tag archive 独立生成即时生效
+	// Dockerfile 修复后可能长时间仍下发旧包;tag archive 独立生成即时生效
 	tarURL := "https://github.com/kungec/kunying-cms/archive/refs/tags/v1.0.61.tar.gz"
 	data, err := downloadFile(tarURL, 60*time.Second)
 	if err != nil {

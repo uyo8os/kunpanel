@@ -450,13 +450,13 @@ func RemoteApply(opts RemoteOptions, w io.Writer) error {
 	phpKeyByVer := map[string]string{}
 	phpVers := sortedKeys(needPHP)
 	total := 3 + len(phpVers) + len(sel) + len(opts.Databases)
-	pw.Set(2, total, "安装 PHP 运行时")
+	pw.Set(2, total, "匹配已有 PHP 运行时")
 	for i, ver := range phpVers {
-		fmt.Fprintf(w, ">> 确保面板存在 PHP %s 运行时(远程站点改由本面板容器服务,版本不变)...\n", ver)
-		pw.Set(2+i, total, "安装 PHP "+ver+" 运行时")
+		fmt.Fprintf(w, ">> 匹配已有的 PHP %s 容器运行时...\n", ver)
+		pw.Set(2+i, total, "匹配 PHP "+ver+" 运行时")
 		key, err := appstore.EnsurePHPVersion(w, ver)
 		if err != nil {
-			return fmt.Errorf("安装 PHP %s 运行时失败: %v", ver, err)
+			return fmt.Errorf("匹配 PHP %s 运行时失败: %w", ver, err)
 		}
 		phpKeyByVer[ver] = key
 	}

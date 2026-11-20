@@ -79,14 +79,13 @@ func (s *Server) handleSiteSetType(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	// 转为容器 PHP 类型时,确保 PHP 运行时挂载了站点根目录
-	if req.Type == "php" {
-		_ = appstore.EnsurePhpMounts(nil)
-	}
 	site, err := websites.GetSite(id)
 	if err != nil {
 		Fail(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if site.Type == "php" && site.PHPMode != "native" {
+		_ = appstore.EnsurePhpMounts(nil)
 	}
 	OK(w, site)
 }
@@ -119,7 +118,7 @@ func (s *Server) handleSiteAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// PHP 站点需确保 PHP 运行时挂载了站点根目录
-	if req.Type == "php" {
+	if site.Type == "php" && site.PHPMode != "native" {
 		_ = appstore.EnsurePhpMounts(nil)
 	}
 	// 可选:同步创建数据库

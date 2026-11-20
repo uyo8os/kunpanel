@@ -60,6 +60,7 @@ func (s *Server) registerAPI() {
 	m.Handle("GET /api/v1/apps/templates", wrap(http.HandlerFunc(s.handleAppTemplates)))
 	m.Handle("GET /api/v1/apps/hub-tags", wrap(http.HandlerFunc(s.handleAppHubTags)))
 	m.Handle("GET /api/v1/apps/nginx/versions", wrap(http.HandlerFunc(s.handleNativeNginxVersions)))
+	m.Handle("GET /api/v1/apps/php/versions", wrap(http.HandlerFunc(s.handleNativePHPVersions)))
 	m.Handle("GET /api/v1/apps/instances/{key}/runtime", wrap(http.HandlerFunc(s.handleAppRuntimeInfo)))
 	m.Handle("POST /api/v1/apps/instances/{key}/runtime/{action}", wrap(http.HandlerFunc(s.handleAppRuntimeAction)))
 	m.Handle("GET /api/v1/apps/instances", wrap(http.HandlerFunc(s.handleAppInstances)))

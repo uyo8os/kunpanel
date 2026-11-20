@@ -51,7 +51,7 @@ PAGES.dashboard = {
 
     // 新手引导(四步上手;全部完成或手动关闭后不再显示)
     var guideSteps = [
-      { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "当前 PHP 和数据库等应用需要 Docker,原生 Nginx 无需 Docker", go: "docker", btn: "去安装" },
+      { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "当前数据库等容器应用需要 Docker；原生 Nginx 和 PHP 无需 Docker", go: "docker", btn: "去安装" },
       { no: 2, done: sites.length > 0, title: "创建第一个网站", desc: "填个域名就行,支持静态页面、PHP 程序和反向代理", go: "websites", btn: "去建站" },
       { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、MariaDB、PostgreSQL 等软件一键安装", go: "apps", btn: "去商店" },
       { no: 4, done: !!((st.entrance && st.entrance !== "-") || st.ssl || st.totp_enabled), title: "加固面板安全", desc: "开启安全入口 / HTTPS / 两步验证,任一项即可", go: "settings", btn: "去设置" },
@@ -882,7 +882,7 @@ PAGES.websites = {
       body.innerHTML =
         '<div class="alert alert-info page-fade"><span class="alert-ico">' + I("info") + "</span>" +
         "输入装有宝塔的远程服务器的 <b>IP 和 root 密码</b>,面板通过 SSH 自动对接:探测站点/证书/伪静态/自定义规则/计划任务/数据库," +
-        "流式搬运网站文件,PHP 按远程版本自动安装对应运行时(版本不变),证书导入后自动重签接管续期,数据库自动导入面板 MySQL 并重建账号授权。</div>" +
+        "流式搬运网站文件;PHP 网站需已有与远程版本相同的 PHP 容器运行时,暂不支持迁移至原生 PHP-FPM。证书导入后自动重签接管续期,数据库自动导入面板 MySQL 并重建账号授权。</div>" +
         '<div class="alert alert-warning page-fade" id="rm-whitelist" style="display:none"><span class="alert-ico">' + I("warn") + "</span>" +
         "<b>防拉黑提醒:</b>长时间 SSH 迁移可能触发远程宝塔的 SSH 防爆破。开始前请先把本服务器出口 IP " +
         '<b class="mono" id="rm-myip"></b> 加入远程服务器的白名单(宝塔面板 → SSH 防爆破 → 白名单,或 fail2ban 忽略列表)。</div>' +
@@ -940,7 +940,7 @@ PAGES.websites = {
         }).join("");
         qs("#rm-result", body).innerHTML =
           '<div class="settings-section"><div class="settings-section-title">第二步 · 勾选要迁移的内容</div>' +
-          '<div class="settings-section-title" style="margin-top:4px">远程站点(' + (scan.sites || []).length + ')<span class="help" style="margin:0">网站文件自动搬运,PHP 版本自动匹配安装;自定义反代规则保真保留</span></div>' +
+          '<div class="settings-section-title" style="margin-top:4px">远程站点(' + (scan.sites || []).length + ')<span class="help" style="margin:0">自动搬运网站文件，PHP 站点需要已有的同版本 PHP 容器，自定义反代规则会保留</span></div>' +
           '<div class="table-wrap"><table class="table"><thead><tr><th>域名</th><th>类型</th><th>原目录</th></tr></thead><tbody>' + (rows || '<tr><td colspan=3 class=help>未检测到站点</td></tr>') + "</tbody></table></div></div>" +
           '<div class="settings-section"><div class="settings-section-title">计划任务(' + (scan.crons || []).length + ')<span class="help" style="margin:0">自动迁移并改写站点路径;旧服务器定时需手动停用</span></div>' +
           '<div class="settings-section"><div class="settings-section-title">第三步 · 开始迁移</div>' +
@@ -1007,19 +1007,22 @@ PAGES.websites = {
       footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">' + I("plus") + ' 创 建</button>',
     });
     var curType = "static";
+    var phpDetectSeq = 0;
     var dyn = qs("#w-dyn", m.el);
     // 类型卡片切换
     function renderDyn(t) {
       curType = t;
+      var seq = ++phpDetectSeq;
       qsa(".wz-type-card", m.el).forEach(function(x) { x.classList.toggle("active", x.getAttribute("data-t") === t); });
       if (t === "static") {
         dyn.innerHTML = '<div class="form-item"><label>根目录</label><input class="input mono" id="w-root" placeholder="留空自动生成,可自定义绝对路径"></div>';
       } else if (t === "php") {
         dyn.innerHTML = '<div class="form-item"><label>PHP 版本</label><select class="select" id="w-php-key" style="max-width:320px"></select>' +
-          '<div id="w-php-status" class="help" style="margin-top:6px">检测中…</div></div>' +
+          '<div id="w-php-status" class="help" data-missing="1" style="margin-top:6px">正在检测 PHP 运行时…</div></div>' +
           '<div class="form-item"><label>根目录</label><input class="input mono" id="w-root" placeholder="留空自动生成,可自定义绝对路径">' +
-          '<div class="help">站点目录会自动挂载进 PHP 运行时,上传的 PHP 程序立即可用;需要其他版本可在应用商店安装(多版本共存)</div></div>';
+          '<div class="help">可选择已运行的原生或容器版本。原生 PHP 需要读取站点目录，并能写入应用的上传和缓存目录。</div></div>';
         api("/apps/instances").then(function(insts) {
+          if (seq !== phpDetectSeq) return;
           var phps = (insts || []).filter(function(x) { return (x.key === "php" || /^php[0-9]+$/.test(x.key)) && x.status === "running"; });
           var sel = qs("#w-php-key", m.el);
           var box = qs("#w-php-status", m.el);
@@ -1033,10 +1036,14 @@ PAGES.websites = {
           delete box.dataset.missing;
           sel.innerHTML = phps.map(function(x) {
             var v = (x.params && x.params.Version) || x.key;
-            return '<option value="' + esc(x.key) + '">PHP ' + esc(v) + '</option>';
+            return '<option value="' + esc(x.key) + '">PHP ' + esc(v) + (x.install_mode === "native" ? ' (原生)' : ' (容器)') + '</option>';
           }).join("");
           box.innerHTML = '<span class="tag tag-success"><span class="dot on"></span>运行中,可直接创建;不同项目可选不同版本</span>';
-        }).catch(function() {});
+        }).catch(function() {
+          if (seq !== phpDetectSeq) return;
+          var box = qs("#w-php-status", m.el);
+          if (box) { box.dataset.missing = "1"; box.textContent = "无法获取 PHP 运行时，请关闭并重试。"; }
+        });
       } else {
         dyn.innerHTML = '<div class="form-item required"><label>目标 URL</label><input class="input mono" id="w-proxy" placeholder="如: http://127.0.0.1:3000">' +
           '<div class="help">Go / Node / Java 等应用先在本机或容器中启动,再反代到其端口</div></div>' +
@@ -1069,7 +1076,8 @@ PAGES.websites = {
       var port = Number(qs("#w-port", m.el).value) || 80;
       if (curType === "php") {
         var box = qs("#w-php-status", m.el);
-        if (box && box.dataset.missing) { toast("请先安装并运行 PHP 运行时", "error"); return; }
+        var phpSelect = qs("#w-php-key", m.el);
+        if (!box || box.dataset.missing || !phpSelect || !phpSelect.value) { toast("请等待 PHP 运行时加载并选择可用版本", "error"); return; }
       }
       var body = {
         domain: domain, type: curType, port: port,
@@ -1385,11 +1393,11 @@ PAGES.websites = {
         '<div class="help">修改后自动重载 Nginx 生效;请确保域名已解析到本服务器</div></div>' +
         '<div class="form-item"><label>转换站点类型</label><select class="select" id="ws-type" style="max-width:320px">' +
           ["static", "php", "proxy"].map(function(t) {
-            var names = { static: "静态站点", php: "PHP 站点(容器运行时)", proxy: "反向代理" };
+            var names = { static: "静态站点", php: "PHP 站点", proxy: "反向代理" };
             return '<option value="' + t + '"' + (t === s.type ? " selected" : "") + ">" + names[t] + (t === s.type ? "(当前)" : "") + "</option>";
           }).join("") + '</select>' +
           '<div id="ws-type-params"></div>' +
-          '<div class="help">转换即改写站点配置并立即生效,原目录与数据保留;PHP 站点 = 反代到容器 PHP 运行时(可回选版本)</div></div>' +
+          '<div class="help">转换即改写站点配置并立即生效,原目录与数据保留;PHP 站点可选择原生或容器运行时</div></div>' +
         (s.type === "proxy"
           ? '<div class="form-item required"><label>代理目标</label><input class="input mono" id="ws-proxy" value="' + esc(s.proxy_to || "") + '" placeholder="http://127.0.0.1:8080"></div>' +
             '<div class="form-item"><label>发送域名 Host</label><input class="input mono" id="ws-proxy-host" value="' + esc(s.proxy_host || "") + '" placeholder="$http_host(默认;可写域名如 api.example.com 或 $host)">' +
@@ -1400,8 +1408,8 @@ PAGES.websites = {
           : s.type === "php"
           ? '<div class="form-item"><label>PHP 版本</label><select class="select" id="ws-php-key" style="max-width:320px"></select>' +
             '<div class="help">切换后自动重载 Nginx 生效;选项为当前运行中的 PHP 版本(多版本可在应用商店安装)</div></div>' +
-            '<div class="form-item"><label>发送域名 Host</label><input class="input mono" id="ws-proxy-host" value="' + esc(s.proxy_host || "") + '" placeholder="$http_host(默认;可写域名如 api.example.com 或 $host)">' +
-            '<div class="help">转发给 PHP 运行时的 Host 请求头;留空使用访客原始域名</div></div>'
+            '<div class="form-item"><label>容器 PHP 上游 Host</label><input class="input mono" id="ws-proxy-host" value="' + esc(s.proxy_host || "") + '" placeholder="$http_host(默认;可写域名如 api.example.com 或 $host)">' +
+            '<div class="help">仅用于 PHP 容器的反向代理；原生 PHP-FPM 使用原始请求头。</div></div>'
           : "") +
         '<div class="form-item"><label>监听端口</label><input class="input" id="ws-port" type="number" value="' + (s.port || 80) + '" style="max-width:180px"></div>' +
         (s.type === "static"
@@ -1417,10 +1425,10 @@ PAGES.websites = {
             var insts = await api("/apps/instances");
             var phps = (insts || []).filter(function(x) { return (x.key === "php" || /^php[0-9]+$/.test(x.key)) && x.status === "running"; });
             var cur = s.php_key || "php";
-            if (!phps.some(function(x) { return x.key === cur; })) phps.unshift({ key: cur, params: { Version: cur === "php" ? "默认" : cur.replace("php", "") }, status: "running" });
+            if (!phps.some(function(x) { return x.key === cur; })) phps.unshift({ key: cur, params: { Version: cur === "php" ? "默认" : cur.replace("php", "") }, install_mode: s.php_mode === "native" ? "native" : "", status: "exited" });
             sel.innerHTML = phps.map(function(x) {
               var v = (x.params && x.params.Version) || x.key;
-              return '<option value="' + esc(x.key) + '"' + (x.key === cur ? " selected" : "") + '>PHP ' + esc(v) + '</option>';
+              return '<option value="' + esc(x.key) + '"' + (x.key === cur ? " selected" : "") + '>PHP ' + esc(v) + (x.install_mode === "native" ? ' (原生)' : ' (容器)') + (x.status === "running" ? '' : '（未运行）') + '</option>';
             }).join("");
           } catch (e) { sel.innerHTML = '<option value="' + esc(s.php_key || "php") + '">PHP(当前)</option>'; }
         })();
@@ -1434,20 +1442,20 @@ PAGES.websites = {
           if (nt === s.type) { box.innerHTML = ""; return; }
           if (nt === "proxy") {
             box.innerHTML = '<div class="form-item required" style="margin-top:8px"><label>反代目标</label><input class="input mono" id="ws-type-target" placeholder="http://127.0.0.1:8080"></div>' +
-              '<div class="form-item"><label>发送域名 Host</label><input class="input mono" id="ws-type-host" placeholder="$http_host(默认)"></div>';
+              '<div class="form-item"><label>容器 PHP 上游 Host</label><input class="input mono" id="ws-type-host" placeholder="$http_host(默认)"><div class="help">仅用于 PHP 容器的反向代理；原生 PHP-FPM 使用原始请求头。</div></div>';
           } else if (nt === "php") {
-            box.innerHTML = '<div class="form-item" style="margin-top:8px"><label>PHP 版本</label><select class="select" id="ws-type-php" style="max-width:320px"><option value="php">默认</option></select></div>' +
+            box.innerHTML = '<div class="form-item" style="margin-top:8px"><label>PHP 版本</label><select class="select" id="ws-type-php" style="max-width:320px"><option value="">正在检测 PHP 运行时…</option></select></div>' +
               '<div class="form-item"><label>发送域名 Host</label><input class="input mono" id="ws-type-host" placeholder="$http_host(默认)"></div>';
             (async function() {
               var sel2 = document.getElementById("ws-type-php");
               try {
                 var insts = await api("/apps/instances");
                 var phps = (insts || []).filter(function(x) { return (x.key === "php" || /^php[0-9]+$/.test(x.key)) && x.status === "running"; });
-                if (phps.length) sel2.innerHTML = phps.map(function(x) {
+                if (sel2 && document.getElementById("ws-type-php") === sel2) sel2.innerHTML = phps.length ? phps.map(function(x) {
                   var v = (x.params && x.params.Version) || x.key;
-                  return '<option value="' + esc(x.key) + '">PHP ' + esc(v) + '</option>';
-                }).join("");
-              } catch (e) {}
+                  return '<option value="' + esc(x.key) + '">PHP ' + esc(v) + (x.install_mode === "native" ? ' (原生)' : ' (容器)') + '</option>';
+                }).join("") : '<option value="">无可用 PHP 运行时</option>';
+              } catch (e) { if (sel2) sel2.innerHTML = '<option value="">获取 PHP 运行时失败</option>'; }
             })();
           } else {
             box.innerHTML = '<div class="help" style="margin-top:8px">转静态后将按站点根目录提供文件</div>';
@@ -1462,6 +1470,8 @@ PAGES.websites = {
         // 类型转换:先转换(带目标参数与 Host),完成后整页刷新
         var nt = typeSel ? typeSel.value : s.type;
         if (nt !== s.type) {
+          var phpTarget = document.getElementById("ws-type-php");
+          if (nt === "php" && (!phpTarget || !phpTarget.value)) { toast("请等待 PHP 运行时加载并选择可用版本", "error"); return; }
           try {
             await api("/websites/" + s.id + "/type", { method: "POST", body: {
               type: nt,
@@ -2124,7 +2134,6 @@ PAGES.apps = {
     var actionsHtml = "";
     if (this.tab === "installed") actionsHtml += '<button class="btn btn-sm btn-plain" id="apps-check-upd">' + I("refresh") + ' 检查更新</button>';
     actionsHtml += '<button class="btn btn-sm btn-primary" id="apps-custom-add">' + I("plus") + ' 自定义应用</button>';
-    window.__phpUsedPorts = (instances || []).filter(function(x) { return x.key === "php" || /^php[0-9]+$/.test(x.key); }).map(function(x) { return (x.params && x.params.Port) || ""; }).filter(Boolean);
     var html = '<div class="page-head"><div class="tabs">' + tabsHtml + '</div><div class="tabs-actions">' + actionsHtml + "</div></div><div id=\"apps-body\"></div>";
     el.innerHTML = html;
 
@@ -2153,30 +2162,30 @@ PAGES.apps = {
       html += '<div class="app-grid">';
       if (!shown.length) html += '<div class="help" style="padding:30px;text-align:center;width:100%">没有匹配的应用</div>';
       shown.forEach(function(t, i) {
-        var inst = instances.find(function(x) { return x.key === t.key; });
+        var inst = instances.find(function(x) { return t.key === "php" ? /^php[0-9]*$/.test(x.key) : x.key === t.key; });
         // 新手推荐标识:建站三件套
         var rec = { php: "建站必装", mysql: "网站数据库", wordpress: "一键建站" }[t.key];
         html += '<div class="app-card" style="animation-delay:' + Math.min(i * 0.04, 0.4) + 's">';
         html += '<div class="app-head">' + appIcon(t, 44);
         html += '<div><h4 style="font-size:14px;font-weight:600">' + esc(t.name) + (rec ? ' <span class="tag tag-success" title="新手建站推荐">' + esc(rec) + "</span>" : "") + '</h4><span class="tag tag-primary">' + esc(t.category) + '</span></div></div>';
-        html += '<p style="font-size:12px;color:var(--text-3);flex:1;min-height:32px;line-height:1.5;margin:6px 0">' + esc(t.desc) + '</p>';
+        html += '<p style="font-size:12px;color:var(--text-3);flex:1;min-height:32px;line-height:1.5;margin:6px 0">' + esc(t.key === "php" ? "从官方源码编译原生 PHP-FPM，支持多个版本共存" : t.desc) + '</p>';
         html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto">';
         html += '<span class="tag tag-info">' + esc(t.version) + '</span>';
         // PHP 多版本:已装时仍可安装其他版本(卡片保留安装按钮)
         var instMissing = !!inst && inst.status === "missing";
-        var phpMulti = t.key === "php" && inst && !instMissing;
+        var phpMulti = t.key === "php" && inst;
         if (t.key.indexOf("custom_") === 0) {
           html += '<span style="display:flex;gap:6px;align-items:center">' +
             (inst ? (instMissing ? '<span class="tag tag-danger" title="容器已不存在,点「重建」按原配置恢复">容器已删除</span>' : '<span class="tag tag-success">已安装</span>') : '<button class="btn btn-sm btn-primary" data-install="' + t.key + '">安装</button>') +
             '<button class="btn btn-xs btn-danger-plain" data-custom-del="' + t.key + '" title="删除该自定义应用">删除</button></span>';
+        } else if (phpMulti) {
+          html += '<span style="display:flex;gap:6px;align-items:center">' + (instMissing ? '<span class="tag tag-danger">安装异常</span>' : '<span class="tag tag-success">已安装</span>') +
+            '<button class="btn btn-sm btn-primary" data-install="php" title="可共存不同版本">装其他版本</button></span>';
         } else if (instMissing && inst.install_mode === "native") {
           html += '<span class="tag tag-danger" title="原生 Nginx 文件或服务不存在,请在已安装列表检查">安装异常</span>';
         } else if (instMissing) {
           html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-danger" title="安装记录还在,容器已不存在(可能被手动删除)">容器已删除</span>' +
             '<button class="btn btn-sm btn-primary" data-rebuild="' + t.key + '">重建</button></span>';
-        } else if (phpMulti) {
-          html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-success">已装 ' + esc((inst.params && inst.params.Version) || "") + '</span>' +
-            '<button class="btn btn-sm btn-primary" data-install="' + t.key + '" title="可共存不同版本">装其他版本</button></span>';
         } else if (inst) { html += '<span class="tag tag-success">已安装</span>'; }
         else { html += '<button class="btn btn-sm btn-primary" data-install="' + t.key + '">安装</button>'; }
         html += '</div></div>';
@@ -2274,13 +2283,15 @@ PAGES.apps = {
         instances.forEach(function(r) {
           var tpl = templates.find(function(x) { return x.key === r.key; }) || {};
           var nativeNginx = r.key === "nginx" && r.install_mode === "native";
+          var nativePHP = /^php[0-9]*$/.test(r.key) && r.install_mode === "native";
+          var nativeApp = nativeNginx || nativePHP;
           var statusTag = r.status === "running"
             ? '<span class="tag tag-success"><span class="dot on"></span>运行中</span>'
             : (r.status === "missing"
-              ? (nativeNginx ? '<span class="tag tag-danger" title="原生 Nginx 文件或服务不存在">安装异常</span>' : '<span class="tag tag-danger" title="安装记录还在,但容器已不存在(可能被手动删除)。点「重建」可按原配置恢复,数据目录保留">容器已删除</span>')
+              ? (nativeApp ? '<span class="tag tag-danger" title="原生应用文件或服务不存在">安装异常</span>' : '<span class="tag tag-danger" title="安装记录还在,但容器已不存在(可能被手动删除)。点「重建」可按原配置恢复,数据目录保留">容器已删除</span>')
               : '<span class="tag tag-info"><span class="dot off"></span>未运行</span>');
           var ver = r.params && r.params.Version ? '<span class="tag tag-info" style="margin-left:6px">' + esc(r.params.Version) + '</span>' : "";
-          html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeNginx ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
+          html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeApp ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
           html += '<td>' + statusTag + '</td>';
           var canManage = r.key === "nginx" || r.key === "openresty" ||
             r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
@@ -2293,16 +2304,16 @@ PAGES.apps = {
             var pmaURL = "http://" + location.hostname + ":" + ((r.params && r.params.Port) || "8082") + "/";
             html += '<a class="btn btn-sm btn-primary" href="' + esc(pmaURL) + '" target="_blank" rel="noopener">管理</a>';
           }
-          if (!nativeNginx) html += '<button class="btn btn-sm btn-plain" data-app-cfg="' + r.key + '" data-app-name="' + esc(r.name) + '">配置</button>';
+          if (!nativeApp) html += '<button class="btn btn-sm btn-plain" data-app-cfg="' + r.key + '" data-app-name="' + esc(r.name) + '">配置</button>';
           var running = r.status === "running";
           var missing = r.status === "missing";
-          var actNames = { start: missing && !nativeNginx ? "重建" : "启动", stop: "停止", restart: "重启" };
+          var actNames = { start: missing && !nativeApp ? "重建" : "启动", stop: "停止", restart: "重启" };
           ["start","stop","restart"].forEach(function(a) {
             // 状态感知:运行中禁用启动;容器已删除时禁用停止/重启,「重建」按原配置重新创建容器
-            var dis = (a === "start" && (running || (missing && nativeNginx))) || (a !== "start" && missing) || (a === "stop" && !running);
+            var dis = (a === "start" && (running || (missing && nativeApp))) || (a !== "start" && missing) || (a === "stop" && !running);
             html += '<button class="btn btn-sm btn-plain" data-app-act="' + a + '" data-app-key="' + r.key + '"' + (dis ? " disabled" : "") + ">" + actNames[a] + '</button>';
           });
-          html += '<button class="btn btn-sm btn-danger-plain" data-app-act="uninstall" data-app-key="' + r.key + '"' + (missing && !nativeNginx ? ' title="清除安装记录' + '" data-clear="1"' : '') + '>' + (missing && !nativeNginx ? "清除" : "卸载") + '</button>';
+          html += '<button class="btn btn-sm btn-danger-plain" data-app-act="uninstall" data-app-key="' + r.key + '"' + (missing && !nativeApp ? ' title="清除安装记录' + '" data-clear="1"' : '') + '>' + (missing && !nativeApp ? "清除" : "卸载") + '</button>';
           if (r.status === "running" && (r.key === "python" || r.key === "nodejs" || r.key === "golang")) {
             html += '<a class="btn btn-sm btn-plain" href="#/terminal?container=kun-' + esc(r.key) + '">终端</a>';
           }
@@ -2327,6 +2338,7 @@ PAGES.apps = {
         // WAF 状态只取一次:nginx 升级会换掉 Lua 定制镜像,需要提醒
         var wafOn = false;
         try { var wf = await api("/waf"); wafOn = !!((wf.settings || wf).enabled); } catch (e) {}
+        var nativePHPVersions = null;
         // 并行拉取各实例的 Hub 标签(此前串行,4 个实例要串 4 次外网请求)
         var checks = instances.map(function(r) {
           var badge = body.querySelector('[data-upd-badge="' + r.key + '"]');
@@ -2337,6 +2349,13 @@ PAGES.apps = {
               var channel = (r.params && r.params.Channel) || "stable";
               return { r: r, badge: badge, tags: (v && v[channel]) || [], native: true };
             }).catch(function() { return { r: r, badge: badge, tags: [], native: true }; });
+          }
+          if (/^php[0-9]*$/.test(r.key) && r.install_mode === "native") {
+            if (!nativePHPVersions) nativePHPVersions = api("/apps/php/versions");
+            return nativePHPVersions.then(function(v) {
+              var branch = ((r.params && r.params.Version) || "").split(".").slice(0, 2).join(".");
+              return { r: r, badge: badge, tags: v && v[branch] ? [v[branch]] : [], native: true, nativePHP: true };
+            }).catch(function() { return { r: r, badge: badge, tags: [], native: true, nativePHP: true }; });
           }
           return api("/apps/hub-tags?key=" + encodeURIComponent(base))
             .then(function(tags) { return { r: r, badge: badge, tags: tags || [] }; })
@@ -2364,11 +2383,14 @@ PAGES.apps = {
             }
             if (newer) {
               upd++;
-              badge.innerHTML = '<button class="btn btn-xs btn-plain" data-nginx-upgrade>发现新版本 → ' + esc(latest) + '</button>';
-              (function(inst, targetBadge) {
-                var button = qs('[data-nginx-upgrade]', targetBadge);
-                button.onclick = function() { self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst); };
-              })(r, badge);
+              badge.innerHTML = '<button class="btn btn-xs btn-plain" data-native-upgrade>发现新版本 → ' + esc(latest) + '</button>';
+              (function(inst, targetBadge, isPHP) {
+                var button = qs('[data-native-upgrade]', targetBadge);
+                button.onclick = function() {
+                  if (isPHP) self.installNativePHPDialog(el, inst);
+                  else self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst);
+                };
+              })(r, badge, results[i].nativePHP);
             }
             else badge.innerHTML = "";
             continue;
@@ -2416,6 +2438,8 @@ PAGES.apps = {
             var target = instances.find(function(x) { return x.key === key; });
             var uninstallText = target && target.install_mode === "native" && key === "nginx"
               ? "卸载原生 <b>Nginx</b>? 服务将停止,网站配置与数据会保留。"
+              : target && target.install_mode === "native" && /^php[0-9]*$/.test(key)
+              ? "卸载原生 <b>PHP</b>? 服务将停止，网站文件会保留；被网站使用的版本不可卸载。"
               : "卸载 <b>" + key + "</b>?容器将停止并移除(站点配置保留)。";
             confirmDlg(uninstallText, { danger: true }).then(function(ok) {
               if (!ok) return;
@@ -2456,7 +2480,65 @@ PAGES.apps = {
     render();
   },
   /* 应用运行时管理(PHP/Nginx/OpenResty) */
+  nativePHPManagerDialog(key, instance, pageEl) {
+    var self = this;
+    var m = modal({
+      title: "应用管理 · 原生 PHP", width: 780,
+      body: '<div class="hub-tabs" style="margin-bottom:14px"><div class="hub-tab active" data-native-php-tab="info">运行信息</div><div class="hub-tab" data-native-php-tab="ini">配置文件</div></div><div id="native-php-view"></div>',
+      footer: '<button class="btn btn-plain" data-act="close">关 闭</button><button class="btn btn-primary" data-act="upgrade">检查更新 / 升级</button>'
+    });
+    var view = qs("#native-php-view", m.el), currentTab = "info", original = null, sequence = 0;
+    function dirty() { var input = qs("#native-php-ini", view); return !!(input && original !== null && input.value !== original); }
+    m.setVeto(function() {
+      if (!dirty()) return false;
+      confirmDlg("PHP 配置有未保存的修改，确定放弃并关闭吗？", { danger: true }).then(function(ok) { if (ok) m.doClose(); });
+      return true;
+    });
+    qs('[data-act="close"]', m.el).onclick = m.close;
+    qs('[data-act="upgrade"]', m.el).onclick = async function() {
+      if (dirty() && !(await confirmDlg("配置有未保存的修改，确定放弃并升级吗？", { danger: true }))) return;
+      m.doClose();
+      self.installNativePHPDialog(pageEl, instance);
+    };
+    async function show(tab) {
+      if (tab !== currentTab && dirty() && !(await confirmDlg("配置有未保存的修改，确定放弃吗？", { danger: true }))) return;
+      currentTab = tab; original = null;
+      var seq = ++sequence;
+      qsa("[data-native-php-tab]", m.el).forEach(function(x) { x.classList.toggle("active", x.getAttribute("data-native-php-tab") === tab); });
+      view.innerHTML = '<div class="boot-loading" style="height:60px"><div class="spinner"></div></div>';
+      try {
+        var base = "/apps/instances/" + encodeURIComponent(key) + "/runtime";
+        var d = tab === "info" ? await api(base) : await api(base + "/php-ini-get", { method: "POST", body: {} });
+        if (seq !== sequence) return;
+        if (tab === "info") {
+          var extensions = Array.isArray(d.extensions) ? d.extensions : [];
+          view.innerHTML = '<div class="am-info-row"><div class="am-info-label">安装方式</div><div class="am-info-val">原生 PHP-FPM</div></div>' +
+            '<div class="am-info-row"><div class="am-info-label">版本</div><div class="mono am-info-val">' + esc(d.version || (instance.params && instance.params.Version) || "-") + '</div></div>' +
+            '<div class="am-info-row"><div class="am-info-label">服务状态</div><div class="am-info-val">' + (d.status === "running" ? "运行中" : "未运行") + '</div></div>' +
+            '<div class="settings-section"><div class="settings-section-title">已加载扩展</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + extensions.map(function(x) { return '<span class="tag tag-info">' + esc(x) + '</span>'; }).join("") + '</div>' +
+            '<div class="help" style="margin-top:10px">显示当前版本已加载的扩展；暂不支持在此安装第三方扩展。</div></div>';
+        } else {
+          original = d.content || "";
+          view.innerHTML = '<div class="settings-section"><div class="settings-section-title">php.ini 配置</div><textarea class="textarea mono" id="native-php-ini" rows="22" spellcheck="false">' + esc(original) + '</textarea>' +
+            '<div style="margin-top:10px;display:flex;gap:10px"><button class="btn btn-primary btn-sm" id="native-php-save">保存配置</button><button class="btn btn-plain btn-sm" id="native-php-reset">放弃修改</button></div></div>';
+          qs("#native-php-save", view).onclick = async function() {
+            var button = this, content = qs("#native-php-ini", view).value;
+            button.disabled = true;
+            try { var msg = await api(base + "/php-ini-file-save", { method: "POST", body: { content: content } }); if (seq === sequence) original = content; toast(msg || "配置已保存"); }
+            catch (e) { toast(e.message || "保存失败", "error", 8000); }
+            finally { button.disabled = false; }
+          };
+          qs("#native-php-reset", view).onclick = function() { qs("#native-php-ini", view).value = original; };
+        }
+      } catch (e) { if (seq === sequence) view.innerHTML = emptyState("warn", "加载失败", e.message); }
+    }
+    qsa("[data-native-php-tab]", m.el).forEach(function(x) { x.onclick = function() { show(x.getAttribute("data-native-php-tab")); }; });
+    show("info");
+  },
   appManagerDialog(key, instance, pageEl, template) {
+    if (/^php[0-9]*$/.test(key) && instance && instance.install_mode === "native") {
+      return this.nativePHPManagerDialog(key, instance, pageEl);
+    }
     if (key === "nginx" && instance && instance.install_mode === "native") {
       var nativeModal = modal({
         title: "应用管理 · NGINX", width: 780,
@@ -3015,6 +3097,63 @@ PAGES.apps = {
       if (pel) PAGES.apps.render(pel);
     };
   },
+  installNativePHPDialog(el, instance) {
+    var self = this, upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version || "" : "";
+    var minor = upgrading ? ((instance.params && instance.params.Minor) || current.split(".").slice(0, 2).join(".")) : "";
+    var m = modal({
+      title: upgrading ? "升级原生 PHP" : "安装原生 PHP", width: 540,
+      body: '<div class="install-head">' + appIcon({key: "php", icon: "bolt"}, 52) + '<div><b>原生 PHP-FPM</b><div class="help">从 PHP 官方获取源码并在本机编译安装。</div></div></div>' +
+        (upgrading ? '<div class="help" style="margin-bottom:12px">当前版本：' + esc(current || "未知") + '。仅更新当前分支；配置会保留，服务可能短暂中断。</div>' : '') +
+        '<div class="form-item required"><label>PHP 版本</label><select class="select" id="native-php-version" style="width:100%" disabled><option value="">正在获取官方版本…</option></select>' +
+        '<div class="help" id="native-php-version-help">版本信息从 PHP 官方获取。</div></div>' +
+        '<div class="help">安装需要下载源码并编译，耗时取决于服务器性能和网络。各版本使用独立服务。</div>',
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新版本</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? '开始升级' : '开始安装') + '</button>'
+    });
+    var select = qs("#native-php-version", m.el), help = qs("#native-php-version-help", m.el), submit = qs('[data-act="yes"]', m.el);
+    var requestID = 0, missingBranches = [];
+    function updateSelection() {
+      var isCurrent = upgrading && select.value === current;
+      submit.disabled = !select.value || isCurrent;
+      help.textContent = (isCurrent ? "当前分支已是官方最新版本。" : "已从 PHP 官方获取版本。") +
+        (missingBranches.length ? " 以下分支获取失败：" + missingBranches.join("、") + "，请点击刷新重试。" : "");
+    }
+    function loadVersions() {
+      var request = ++requestID;
+      submit.disabled = true; select.disabled = true; help.textContent = "正在获取官方版本…";
+      api("/apps/php/versions").then(function(versions) {
+        if (request !== requestID) return;
+        var options = ["8.6", "8.5", "8.4", "8.3"].filter(function(branch) {
+          return (!upgrading || branch === minor) && versions && typeof versions[branch] === "string" && new RegExp("^" + branch.replace(".", "\\.") + "\\.\\d+$").test(versions[branch]);
+        });
+        missingBranches = (upgrading ? [minor] : ["8.6", "8.5", "8.4", "8.3"]).filter(function(branch) { return options.indexOf(branch) < 0; });
+        select.innerHTML = options.length ? options.map(function(branch) { return '<option value="' + esc(versions[branch]) + '">PHP ' + esc(versions[branch]) + '</option>'; }).join("") : '<option value="">没有可用版本</option>';
+        select.disabled = !options.length;
+        if (options.length) updateSelection();
+        else { submit.disabled = true; help.textContent = "获取官方版本失败，请点击刷新重试。"; }
+      }).catch(function(e) {
+        if (request !== requestID) return;
+        select.innerHTML = '<option value="">版本获取失败</option>';
+        select.disabled = true; submit.disabled = true;
+        help.textContent = "获取官方版本失败：" + (e.message || "请检查服务器网络") + "。可点击刷新重试。";
+      });
+    }
+    select.onchange = updateSelection;
+    qs('[data-act="retry"]', m.el).onclick = loadVersions;
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    submit.onclick = function() {
+      if (!select.value || submit.disabled) return;
+      submit.disabled = true;
+      var params = { Version: select.value };
+      if (upgrading) params.UpgradeKey = instance.key;
+      api("/apps/install", { method: "POST", body: { key: "php", params: params } }).then(function(d) {
+        m.close();
+        if (d && (d.id || d.task_id)) taskModal(d.id || d.task_id, function() { self.render(el); });
+        else { toast(upgrading ? "升级任务已提交" : "安装任务已提交"); self.render(el); }
+      }).catch(function(e) { submit.disabled = false; toast(e.message || (upgrading ? "升级失败" : "安装失败"), "error", 6000); });
+    };
+    loadVersions();
+  },
   installNativeNginxDialog(el, t, instance) {
     var self = this;
     var upgrading = !!instance;
@@ -3074,20 +3213,7 @@ PAGES.apps = {
   },
   installDialog(el, t) {
     if (t.key === "nginx") return this.installNativeNginxDialog(el, t);
-    // PHP 多版本:端口默认避开已装实例的端口。
-    // window.__phpUsedPorts 可能过期(装完未刷新页面),打开弹窗时再拉一次
-    // 最新实例数据修正默认值;后端亦有端口防撞兜底
-    var usedPorts = {};
-    (window.__phpUsedPorts || []).forEach(function(x) { usedPorts[x] = 1; });
-    var defPort = function(p0) {
-      var v = p0.default || "";
-      if (t.key === "php" && p0.key === "Port" && usedPorts[v]) {
-        var n = parseInt(v, 10) || 8088;
-        while (usedPorts[String(n)]) n++;
-        v = String(n);
-      }
-      return v;
-    };
+    if (t.key === "php") return this.installNativePHPDialog(el);
     var paramsHTML = (t.params || []).map(function(p) {
       var field;
       if (p.type === "select") {
@@ -3097,7 +3223,7 @@ PAGES.apps = {
         });
         field += '</select>';
       } else {
-        field = '<input class="input" data-k="' + esc(p.key) + '" type="' + (p.type === "password" ? "password" : "text") + '" value="' + esc(defPort(p) || "") + '" placeholder="' + esc(p.default || "请输入") + '">';
+        field = '<input class="input" data-k="' + esc(p.key) + '" type="' + (p.type === "password" ? "password" : "text") + '" value="' + esc(p.default || "") + '" placeholder="' + esc(p.default || "请输入") + '">';
       }
       var help = p.help ? '<div class="help">' + esc(p.help) + '</div>' : '';
       return '<div class="form-item ' + (p.required ? "required" : "") + '"><label>' + esc(p.label) + '</label>' + field + help + '</div>';
@@ -3129,24 +3255,7 @@ PAGES.apps = {
     })();
     m.el.querySelector('[data-act="no"]').onclick = m.close;
     m.el.querySelector('[data-act="yes"]').onclick = function() {
-      // 打开弹窗时拉取最新实例端口,修正默认值(避免页面数据过期导致撞端口)
-    if (t.key === "php") {
-      api("/apps/instances").then(function(insts) {
-        (insts || []).forEach(function(x) {
-          if (x.key === "php" || /^php[0-9]+$/.test(x.key)) {
-            var pn = x.params && x.params.Port;
-            if (pn) usedPorts[String(pn)] = 1;
-          }
-        });
-        var inp = m.el.querySelector('[data-k="Port"]');
-        if (inp && usedPorts[inp.value]) {
-          var n = parseInt(inp.value, 10) || 8088;
-          while (usedPorts[String(n)]) n++;
-          inp.value = String(n);
-        }
-      }).catch(function() {});
-    }
-    var params = {};
+      var params = {};
       m.el.querySelectorAll("[data-k]").forEach(function(inp) { params[inp.getAttribute("data-k")] = inp.value.trim(); });
       for (var pi in t.params || []) {
         var pp = t.params[pi];
@@ -6881,7 +6990,7 @@ PAGES.docker = {
       el.innerHTML = '<div class="card" style="max-width:520px;margin:48px auto;text-align:center;padding:48px 36px">' +
         '<div style="margin-bottom:18px">' + iconBox("cube", 68) + "</div>" +
         '<h3 style="font-size:18px;margin-bottom:8px">Docker 容器环境</h3>' +
-        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:24px">安装后可管理容器、镜像、网络与数据卷;当前 PHP 和数据库等应用需要 Docker,原生 Nginx 无需 Docker</p>' +
+        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:24px">安装后可管理容器、镜像、网络与数据卷；当前数据库等容器应用需要 Docker，原生 Nginx 和 PHP 无需 Docker</p>' +
         '<div style="display:flex;flex-direction:column;gap:12px;align-items:center">' +
         '<select class="select" id="dk-mirror" style="width:100%;max-width:320px;padding:10px 12px;border-radius:10px;font-size:13px">' +
         '<option value="auto">自动选择镜像源</option>' +

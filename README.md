@@ -54,6 +54,10 @@ bash kp-install.sh --uninstall              # 卸载
 
 原生 Nginx 不使用面板内置 WAF。已有 Nginx、网关容器、端口占用或旧容器/WAF 配置时，请先检查并处理，再安装原生版本；其他应用仍使用各自现有的安装方式。
 
+### 原生 PHP
+
+应用商店提供从 PHP 官方源码编译的 PHP-FPM 8.3、8.4、8.5 和 8.6；各版本独立运行，网站可选择对应版本。需 Linux systemd、root 权限及面板原生 Nginx。PHP 会编译常用官方扩展；Redis 等第三方扩展目前尚不支持在面板内安装。已有 PHP 容器仍可管理，旧网站不会自动切换到原生运行时。
+
 ### Windows
 
 下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
