@@ -20,6 +20,7 @@ import (
 
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/config"
+	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/util"
 	"kunpanel/internal/websites"
 )
@@ -50,7 +51,7 @@ func wafInstalled() bool { return exists(wafConfSnippet()) }
 
 // WafActive WAF 是否生效(已安装且总开关开启)——供网站模块生成配置时调用
 func WafActive() bool {
-	return wafInstalled() && GetWafSettings().Enabled
+	return !nativenginx.Installed() && wafInstalled() && GetWafSettings().Enabled
 }
 
 // Init 注入网站模块钩子
@@ -67,6 +68,10 @@ func Init() {
 // 且没有任何报错。WAF 已安装(引擎文件在)时启动即按内嵌内容补齐;
 // 内容有实际变化时顺手 reload 网关使其生效。
 func syncWafLua() {
+	// 原生网关不加载容器 WAF，不能在启动时重建 Lua 指令污染 nginx 配置。
+	if nativenginx.Installed() {
+		return
+	}
 	dst := filepath.Join(wafDir(), "waf.lua")
 	b, err := assets.ReadFile("wafassets/waf.lua")
 	if err != nil {
@@ -669,6 +674,9 @@ var wafOpMu sync.Mutex
 func InstallWaf(w io.Writer) error {
 	wafOpMu.Lock()
 	defer wafOpMu.Unlock()
+	if nativenginx.Installed() {
+		return fmt.Errorf("原生 Nginx 不支持面板内置 WAF，请使用独立 WAF")
+	}
 	gw := gatewayContainer()
 	if gw == "" {
 		return fmt.Errorf("未检测到运行中的 Nginx / OpenResty,请先在应用商店安装(WAF 依赖 Lua 规则引擎)")

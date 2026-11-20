@@ -2,9 +2,9 @@
 package websites
 
 import (
-	"math"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,19 +17,19 @@ import (
 
 // CertInfo 证书元信息
 type CertInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Domains string `json:"domains"`
-	Expire  string `json:"expire"` // 2006-01-02
-	Days    int    `json:"days"`   // 距到期天数,-1 表示永久(自签默认长期)
-	SelfSigned bool `json:"self_signed"`
-	Acme    bool   `json:"acme"`            // Let's Encrypt 签发,支持自动续期
-	Staging bool   `json:"staging,omitempty"` // ACME 测试环境
-	SiteID  string `json:"site_id,omitempty"` // 签发来源站点(续期时定位挑战目录)
-	VMethod string `json:"v_method,omitempty"` // ACME 验证方式:http / dns
-	VAlias  string `json:"v_alias,omitempty"`  // DNS 别名域名(CNAME 委托目标)
-	Profile string `json:"profile,omitempty"`  // ACME 证书档案:shortlived = LE 短期证书(约 6 天;IP 证书仅此档案)
-	Created string `json:"created"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Domains    string `json:"domains"`
+	Expire     string `json:"expire"` // 2006-01-02
+	Days       int    `json:"days"`   // 距到期天数,-1 表示永久(自签默认长期)
+	SelfSigned bool   `json:"self_signed"`
+	Acme       bool   `json:"acme"`               // Let's Encrypt 签发,支持自动续期
+	Staging    bool   `json:"staging,omitempty"`  // ACME 测试环境
+	SiteID     string `json:"site_id,omitempty"`  // 签发来源站点(续期时定位挑战目录)
+	VMethod    string `json:"v_method,omitempty"` // ACME 验证方式:http / dns
+	VAlias     string `json:"v_alias,omitempty"`  // DNS 别名域名(CNAME 委托目标)
+	Profile    string `json:"profile,omitempty"`  // ACME 证书档案:shortlived = LE 短期证书(约 6 天;IP 证书仅此档案)
+	Created    string `json:"created"`
 }
 
 // renewDueDays 续期/临期判定阈值:普通证书 30 天;shortlived 短期证书按半衰期
@@ -48,10 +48,10 @@ func sslDir() string { return filepath.Join(config.DataDir(), "ssl") }
 func CertFilePath(id string) string { return certCrtPath(id) }
 func KeyFilePath(id string) string  { return certKeyPath(id) }
 
-func certMetaPath(id string) string  { return filepath.Join(sslDir(), id+".json") }
-func certCrtPath(id string) string   { return filepath.Join(sslDir(), id+".crt") }
-func certKeyPath(id string) string   { return filepath.Join(sslDir(), id+".key") }
-func certCsrPath(id string) string   { return filepath.Join(sslDir(), id+".csr") }
+func certMetaPath(id string) string { return filepath.Join(sslDir(), id+".json") }
+func certCrtPath(id string) string  { return filepath.Join(sslDir(), id+".crt") }
+func certKeyPath(id string) string  { return filepath.Join(sslDir(), id+".key") }
+func certCsrPath(id string) string  { return filepath.Join(sslDir(), id+".csr") }
 
 // ListCerts 全部证书(按创建时间倒序)
 func ListCerts() []CertInfo {
@@ -94,10 +94,13 @@ func GetCert(id string) (CertInfo, bool) {
 	return CertInfo{}, false
 }
 
-// CertFilePaths 返回站点 conf 引用的容器内路径(挂载 DATA/ssl -> /etc/nginx/ssl)
+// CertFilePaths 返回运行中的网关可读取的证书路径。
 func CertFilePaths(id string) (crt, key string, err error) {
 	if _, ok := GetCert(id); !ok {
 		return "", "", fmt.Errorf("证书不存在: %s", id)
+	}
+	if DetectNginx().Mode == "host" {
+		return certCrtPath(id), certKeyPath(id), nil
 	}
 	return "/etc/nginx/ssl/" + id + ".crt", "/etc/nginx/ssl/" + id + ".key", nil
 }

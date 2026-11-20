@@ -2169,6 +2169,8 @@ PAGES.apps = {
           html += '<span style="display:flex;gap:6px;align-items:center">' +
             (inst ? (instMissing ? '<span class="tag tag-danger" title="容器已不存在,点「重建」按原配置恢复">容器已删除</span>' : '<span class="tag tag-success">已安装</span>') : '<button class="btn btn-sm btn-primary" data-install="' + t.key + '">安装</button>') +
             '<button class="btn btn-xs btn-danger-plain" data-custom-del="' + t.key + '" title="删除该自定义应用">删除</button></span>';
+        } else if (instMissing && inst.install_mode === "native") {
+          html += '<span class="tag tag-danger" title="原生 Nginx 文件或服务不存在,请在已安装列表检查">安装异常</span>';
         } else if (instMissing) {
           html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-danger" title="安装记录还在,容器已不存在(可能被手动删除)">容器已删除</span>' +
             '<button class="btn btn-sm btn-primary" data-rebuild="' + t.key + '">重建</button></span>';
@@ -2271,13 +2273,14 @@ PAGES.apps = {
         html += '<div class="table-wrap"><table class="table"><thead><tr><th>应用</th><th>标识</th><th>状态</th><th>操作</th></tr></thead><tbody>';
         instances.forEach(function(r) {
           var tpl = templates.find(function(x) { return x.key === r.key; }) || {};
+          var nativeNginx = r.key === "nginx" && r.install_mode === "native";
           var statusTag = r.status === "running"
             ? '<span class="tag tag-success"><span class="dot on"></span>运行中</span>'
             : (r.status === "missing"
-              ? '<span class="tag tag-danger" title="安装记录还在,但容器已不存在(可能被手动删除)。点「重建」可按原配置恢复,数据目录保留">容器已删除</span>'
+              ? (nativeNginx ? '<span class="tag tag-danger" title="原生 Nginx 文件或服务不存在">安装异常</span>' : '<span class="tag tag-danger" title="安装记录还在,但容器已不存在(可能被手动删除)。点「重建」可按原配置恢复,数据目录保留">容器已删除</span>')
               : '<span class="tag tag-info"><span class="dot off"></span>未运行</span>');
           var ver = r.params && r.params.Version ? '<span class="tag tag-info" style="margin-left:6px">' + esc(r.params.Version) + '</span>' : "";
-          html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
+          html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeNginx ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
           html += '<td>' + statusTag + '</td>';
           var canManage = r.key === "nginx" || r.key === "openresty" ||
             r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
@@ -2290,16 +2293,16 @@ PAGES.apps = {
             var pmaURL = "http://" + location.hostname + ":" + ((r.params && r.params.Port) || "8082") + "/";
             html += '<a class="btn btn-sm btn-primary" href="' + esc(pmaURL) + '" target="_blank" rel="noopener">管理</a>';
           }
-          html += '<button class="btn btn-sm btn-plain" data-app-cfg="' + r.key + '" data-app-name="' + esc(r.name) + '">配置</button>';
+          if (!nativeNginx) html += '<button class="btn btn-sm btn-plain" data-app-cfg="' + r.key + '" data-app-name="' + esc(r.name) + '">配置</button>';
           var running = r.status === "running";
           var missing = r.status === "missing";
-          var actNames = { start: missing ? "重建" : "启动", stop: "停止", restart: "重启" };
+          var actNames = { start: missing && !nativeNginx ? "重建" : "启动", stop: "停止", restart: "重启" };
           ["start","stop","restart"].forEach(function(a) {
             // 状态感知:运行中禁用启动;容器已删除时禁用停止/重启,「重建」按原配置重新创建容器
-            var dis = (a === "start" && running) || (a !== "start" && missing) || (a === "stop" && !running);
+            var dis = (a === "start" && (running || (missing && nativeNginx))) || (a !== "start" && missing) || (a === "stop" && !running);
             html += '<button class="btn btn-sm btn-plain" data-app-act="' + a + '" data-app-key="' + r.key + '"' + (dis ? " disabled" : "") + ">" + actNames[a] + '</button>';
           });
-          html += '<button class="btn btn-sm btn-danger-plain" data-app-act="uninstall" data-app-key="' + r.key + '"' + (missing ? ' title="清除安装记录' + '" data-clear="1"' : '') + '>' + (missing ? "清除" : "卸载") + '</button>';
+          html += '<button class="btn btn-sm btn-danger-plain" data-app-act="uninstall" data-app-key="' + r.key + '"' + (missing && !nativeNginx ? ' title="清除安装记录' + '" data-clear="1"' : '') + '>' + (missing && !nativeNginx ? "清除" : "卸载") + '</button>';
           if (r.status === "running" && (r.key === "python" || r.key === "nodejs" || r.key === "golang")) {
             html += '<a class="btn btn-sm btn-plain" href="#/terminal?container=kun-' + esc(r.key) + '">终端</a>';
           }
@@ -2310,7 +2313,7 @@ PAGES.apps = {
       html += '</div>';
       body.innerHTML = html;
       body.querySelectorAll("[data-app-mgr]").forEach(function(b) {
-        b.onclick = function() { self.appManagerDialog(b.getAttribute("data-app-mgr")); };
+        b.onclick = function() { var key = b.getAttribute("data-app-mgr"); self.appManagerDialog(key, instances.find(function(x) { return x.key === key; }), el, templates.find(function(x) { return x.key === key; })); };
       });
       body.querySelectorAll("[data-app-cfg]").forEach(function(b) {
         b.onclick = function() { self.composeDialog(b.getAttribute("data-app-cfg"), b.getAttribute("data-app-name")); };
@@ -2320,7 +2323,7 @@ PAGES.apps = {
       var updBtn = qs("#apps-check-upd", el);
       if (updBtn) updBtn.onclick = async function() {
         this.disabled = true; this.innerHTML = "检查中...";
-        var upd = 0, checked = 0;
+        var upd = 0, checked = 0, unavailable = 0;
         // WAF 状态只取一次:nginx 升级会换掉 Lua 定制镜像,需要提醒
         var wafOn = false;
         try { var wf = await api("/waf"); wafOn = !!((wf.settings || wf).enabled); } catch (e) {}
@@ -2329,6 +2332,12 @@ PAGES.apps = {
           var badge = body.querySelector('[data-upd-badge="' + r.key + '"]');
           if (!badge) return null;
           var base = /^php[0-9]*$/.test(r.key) ? "php" : r.key;
+          if (r.key === "nginx" && r.install_mode === "native") {
+            return api("/apps/nginx/versions").then(function(v) {
+              var channel = (r.params && r.params.Channel) || "stable";
+              return { r: r, badge: badge, tags: (v && v[channel]) || [], native: true };
+            }).catch(function() { return { r: r, badge: badge, tags: [], native: true }; });
+          }
           return api("/apps/hub-tags?key=" + encodeURIComponent(base))
             .then(function(tags) { return { r: r, badge: badge, tags: tags || [] }; })
             .catch(function() { return { r: r, badge: badge, tags: [] }; });
@@ -2337,17 +2346,36 @@ PAGES.apps = {
         for (var i = 0; i < results.length; i++) {
           var r = results[i].r, badge = results[i].badge, tags = results[i].tags;
           var cur = (r.params && r.params.Version) || "";
-          if (!tags.length || !cur) { badge.innerHTML = ""; continue; }
+          if (!tags.length || !cur) { if (results[i].native) { unavailable++; badge.innerHTML = '<span class="tag tag-info">版本检查失败</span>'; } else badge.innerHTML = ""; continue; }
           var rolling = /^(latest|edge|alpine|stable|slim.*|bookworm|bullseye)$/i.test(cur);
           if (rolling) { badge.innerHTML = ""; continue; }
           // php 标签形态是 8.4-apache,归一后与实例版本比对
           var tagsN = tags.map(function(t) { return String(t).replace(/-apache$/, ""); });
           var idx = tagsN.indexOf(cur);
-          if (idx === 0) { badge.innerHTML = ""; continue; }
           checked++;
+          if (idx === 0) { badge.innerHTML = ""; continue; }
+          if (results[i].native) {
+            var latest = tagsN[0], newer = false;
+            if (/^\d+\.\d+\.\d+$/.test(latest) && /^\d+\.\d+\.\d+$/.test(cur)) {
+              var lv = latest.split(".").map(Number), cv = cur.split(".").map(Number);
+              for (var n = 0; n < 3; n++) {
+                if (lv[n] !== cv[n]) { newer = lv[n] > cv[n]; break; }
+              }
+            }
+            if (newer) {
+              upd++;
+              badge.innerHTML = '<button class="btn btn-xs btn-plain" data-nginx-upgrade>发现新版本 → ' + esc(latest) + '</button>';
+              (function(inst, targetBadge) {
+                var button = qs('[data-nginx-upgrade]', targetBadge);
+                button.onclick = function() { self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst); };
+              })(r, badge);
+            }
+            else badge.innerHTML = "";
+            continue;
+          }
           // WAF 启用时 nginx 跑的是面板自编译的 Lua 定制镜像(版本与官方标签无对应),
           // "可更新 → 官方版"的提示具有误导性且照做会丢 WAF——直接标注定制镜像
-          if (r.key === "nginx" && wafOn) {
+          if (r.key === "nginx" && !results[i].native && wafOn) {
             badge.innerHTML = '<span class="tag tag-info" title="WAF 启用中:当前为面板自编译的 Lua 定制镜像,官方标签版本不适用。如需升级请升级后重装 WAF">WAF 定制镜像</span>';
             continue;
           }
@@ -2358,7 +2386,7 @@ PAGES.apps = {
             badge.innerHTML = '<span class="tag tag-info">当前版本已下架</span>';
           }
         }
-        toast(upd ? ("检查完成: " + checked + " 个可检查," + upd + " 个可更新") : "全部应用已是最新", upd ? "info" : "success", 6000);
+        toast("检查完成: " + checked + " 个已检查," + upd + " 个有新版本" + (unavailable ? "," + unavailable + " 个检查失败" : ""), (upd || unavailable) ? "info" : "success", 6000);
         this.disabled = false; this.innerHTML = I("refresh") + " 检查更新";
       };
       body.querySelectorAll("[data-app-act]").forEach(function(b) {
@@ -2385,7 +2413,11 @@ PAGES.apps = {
               };
               return;
             }
-            confirmDlg("卸载 <b>" + key + "</b>?容器将停止并移除(站点配置保留)。", { danger: true }).then(function(ok) {
+            var target = instances.find(function(x) { return x.key === key; });
+            var uninstallText = target && target.install_mode === "native" && key === "nginx"
+              ? "卸载原生 <b>Nginx</b>? 服务将停止,网站配置与数据会保留。"
+              : "卸载 <b>" + key + "</b>?容器将停止并移除(站点配置保留)。";
+            confirmDlg(uninstallText, { danger: true }).then(function(ok) {
               if (!ok) return;
               b.disabled = true;
               api("/apps/instances/" + key + "/uninstall", { method: "POST", body: { remove_data: false }, timeout: 0 })
@@ -2424,7 +2456,97 @@ PAGES.apps = {
     render();
   },
   /* 应用运行时管理(PHP/Nginx/OpenResty) */
-  appManagerDialog(key) {
+  appManagerDialog(key, instance, pageEl, template) {
+    if (key === "nginx" && instance && instance.install_mode === "native") {
+      var nativeModal = modal({
+        title: "应用管理 · NGINX", width: 780,
+        body: '<div class="hub-tabs" style="margin-bottom:14px">' +
+          '<div class="hub-tab active" data-native-tab="info">运行状态</div>' +
+          '<div class="hub-tab" data-native-tab="conf">主配置</div>' +
+          '<div class="hub-tab" data-native-tab="log">错误日志</div></div><div id="native-nginx-view"></div>',
+        footer: '<button class="btn btn-plain" data-act="close">关 闭</button><button class="btn btn-primary" data-act="upgrade">升级 / 切换版本</button>'
+      });
+      var nativeView = qs("#native-nginx-view", nativeModal.el);
+      var nativeOriginal = null;
+      var nativeTab = "info";
+      var nativeSeq = 0;
+      function nativeDirty() {
+        var input = qs("#native-nginx-conf", nativeView);
+        return input && nativeOriginal !== null && input.value !== nativeOriginal;
+      }
+      nativeModal.setVeto(function() {
+        if (!nativeDirty()) return false;
+        confirmDlg("Nginx 配置有未保存的修改，确定放弃并关闭吗？", { danger: true }).then(function(ok) {
+          if (ok) nativeModal.doClose();
+        });
+        return true;
+      });
+      qs('[data-act="close"]', nativeModal.el).onclick = nativeModal.close;
+      var self = this;
+      qs('[data-act="upgrade"]', nativeModal.el).onclick = async function() {
+        if (nativeDirty() && !(await confirmDlg("配置有未保存的修改，确定放弃并切换版本吗？", { danger: true }))) return;
+        nativeModal.doClose();
+        self.installNativeNginxDialog(pageEl, template, instance);
+      };
+      function nativeAction(action) {
+        return api("/apps/instances/nginx/runtime/" + action, { method: "POST", body: {} });
+      }
+      async function showNativeTab(tab) {
+        if (tab !== nativeTab && nativeDirty() && !(await confirmDlg("配置有未保存的修改，确定放弃吗？", { danger: true }))) return;
+        nativeTab = tab;
+        nativeOriginal = null;
+        var seq = ++nativeSeq;
+        qsa("[data-native-tab]", nativeModal.el).forEach(function(x) { x.classList.toggle("active", x.getAttribute("data-native-tab") === tab); });
+        if (tab === "info") {
+          nativeView.innerHTML = '<div class="am-info-row"><div class="am-info-label">安装方式</div><div class="am-info-val">原生源码编译</div></div>' +
+            '<div class="am-info-row"><div class="am-info-label">版本</div><div class="mono am-info-val" id="native-nginx-version">' + esc((instance.params && instance.params.Version) || "-") + '</div></div>' +
+            '<div class="am-info-row"><div class="am-info-label">服务状态</div><div class="am-info-val">' + (instance.status === "running" ? "运行中" : "未运行") + '</div></div>' +
+            '<div class="am-ops" style="margin-top:12px"><button class="btn btn-sm btn-plain" id="native-nginx-test">测试当前配置</button>' +
+            '<button class="btn btn-sm btn-plain" id="native-nginx-reload">重载配置</button>' +
+            '<a class="btn btn-sm btn-primary" href="#/websites">' + I("globe") + ' 网站管理</a></div>' +
+            '<div class="help" style="margin-top:14px">站点配置可在「网站」中管理，服务启停与卸载可在已安装列表操作。</div>';
+          qs("#native-nginx-test", nativeView).onclick = function() { nativeAction("test").then(function(msg) { toast(msg || "配置检查通过"); }).catch(function(e) { toast(e.message, "error", 8000); }); };
+          qs("#native-nginx-reload", nativeView).onclick = function() { nativeAction("reload").then(function(msg) { toast(msg || "配置已重载"); }).catch(function(e) { toast(e.message, "error", 8000); }); };
+          api("/apps/instances/nginx/runtime").then(function(d) {
+            var target = qs("#native-nginx-version", nativeView);
+            if (target && d.version) target.textContent = d.version;
+          }).catch(function() {});
+          return;
+        }
+        nativeView.innerHTML = '<div class="boot-loading" style="height:60px"><div class="spinner"></div></div>';
+        try {
+          var data = await nativeAction(tab === "conf" ? "conf-get" : "errorlog");
+          if (seq !== nativeSeq) return;
+          if (tab === "conf") {
+            nativeOriginal = data.content || "";
+            nativeView.innerHTML = '<div class="settings-section"><div class="settings-section-title">nginx.conf 主配置<span class="help" style="margin:0">保存时校验配置；服务运行中则重载</span></div>' +
+              '<textarea class="textarea mono" id="native-nginx-conf" rows="22" spellcheck="false" style="font-size:12px;line-height:1.5">' + esc(nativeOriginal) + '</textarea>' +
+              '<div style="margin-top:10px;display:flex;gap:10px"><button class="btn btn-primary btn-sm" id="native-nginx-save">保存配置</button>' +
+              '<button class="btn btn-plain btn-sm" id="native-nginx-reset">放弃修改</button></div></div>';
+            qs("#native-nginx-save", nativeView).onclick = async function() {
+              var button = this, input = qs("#native-nginx-conf", nativeView), content = input.value;
+              button.disabled = true;
+              try {
+                var msg = await api("/apps/instances/nginx/runtime/conf-save", { method: "POST", body: { content: content } });
+                if (seq === nativeSeq) nativeOriginal = content;
+                toast(msg || "配置已保存并检查");
+              } catch (e) { toast(e.message || "保存失败", "error", 8000); }
+              finally { button.disabled = false; }
+            };
+            qs("#native-nginx-reset", nativeView).onclick = function() { qs("#native-nginx-conf", nativeView).value = nativeOriginal; };
+          } else {
+            nativeView.innerHTML = '<div class="settings-section"><div class="settings-section-title">错误日志（最近 120 行）</div>' +
+              '<pre class="am-raw">' + esc(data.content || "（空）") + '</pre><div style="margin-top:10px"><button class="btn btn-plain btn-sm" id="native-nginx-log-refresh">刷新日志</button></div></div>';
+            qs("#native-nginx-log-refresh", nativeView).onclick = function() { showNativeTab("log"); };
+          }
+        } catch (e) {
+          if (seq === nativeSeq) nativeView.innerHTML = emptyState("warn", "加载失败", e.message);
+        }
+      }
+      qsa("[data-native-tab]", nativeModal.el).forEach(function(x) { x.onclick = function() { showNativeTab(x.getAttribute("data-native-tab")); }; });
+      showNativeTab("info");
+      return;
+    }
     var m = modal({
       title: "应用管理 · " + key.toUpperCase(), width: 780,
       body: '<div id="am-body">' + skeletonTable(3, 3) + "</div>",
@@ -2893,7 +3015,65 @@ PAGES.apps = {
       if (pel) PAGES.apps.render(pel);
     };
   },
+  installNativeNginxDialog(el, t, instance) {
+    var self = this;
+    var upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version || "" : "";
+    var m = modal({
+      title: upgrading ? "升级 / 切换原生 Nginx" : "安装原生 Nginx", width: 540,
+      body: '<div class="install-head">' + appIcon(t, 52) + '<div><b>原生 Nginx</b><div class="help">从 Nginx 官方获取源码并在本机编译安装。</div></div></div>' +
+        (upgrading ? '<div class="help" style="margin-bottom:12px">当前版本：' + esc(current || "未知") + '。升级或切换版本时将保留现有网站配置和数据，服务可能短暂中断。</div>' : '') +
+        '<div class="form-item required"><label>发布分支</label><select class="select" id="nginx-channel" style="width:100%"><option value="stable">Stable（稳定版）</option><option value="mainline">Mainline（主线版）</option></select></div>' +
+        '<div class="form-item required"><label>版本</label><select class="select" id="nginx-version" style="width:100%" disabled><option value="">正在获取官方版本…</option></select>' +
+        '<div class="help" id="nginx-version-help">版本列表从 Nginx 官方获取。</div></div>' +
+        '<div class="help" style="margin-top:10px">安装需要下载源码并编译，耗时取决于服务器性能和网络。已有服务或端口冲突时将停止安装。</div>',
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新版本</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? '开始升级 / 切换' : '开始安装') + '</button>'
+    });
+    var channel = qs("#nginx-channel", m.el), select = qs("#nginx-version", m.el);
+    var help = qs("#nginx-version-help", m.el), install = qs('[data-act="yes"]', m.el);
+    if (upgrading && instance.params && instance.params.Channel === "mainline") channel.value = "mainline";
+    var groups = null, loading = false;
+    function showChannel() {
+      var versions = groups && Array.isArray(groups[channel.value]) ? groups[channel.value] : [];
+      versions = versions.filter(function(v) { return typeof v === "string" && /^\d+\.\d+\.\d+$/.test(v); });
+      select.innerHTML = versions.length ? versions.map(function(v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join("") : '<option value="">没有可用版本</option>';
+      select.disabled = !versions.length;
+      install.disabled = !versions.length || loading;
+      help.textContent = versions.length ? "已从 Nginx 官方获取版本列表。" : "此分支暂无可用版本，请刷新重试。";
+    }
+    function loadVersions() {
+      loading = true;
+      install.disabled = true;
+      select.disabled = true;
+      help.textContent = "正在获取官方版本…";
+      api("/apps/nginx/versions").then(function(v) {
+        groups = v || {};
+        loading = false;
+        showChannel();
+      }).catch(function(e) {
+        loading = false;
+        groups = null;
+        select.innerHTML = '<option value="">版本获取失败</option>';
+        help.textContent = "获取官方版本失败：" + (e.message || "请检查服务器网络") + "。可点击刷新重试。";
+      });
+    }
+    channel.onchange = showChannel;
+    qs('[data-act="retry"]', m.el).onclick = loadVersions;
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    install.onclick = function() {
+      if (!select.value || loading) return;
+      install.disabled = true;
+      api("/apps/install", { method: "POST", body: { key: "nginx", params: { Version: select.value, Channel: channel.value } } })
+        .then(function(d) {
+          m.close();
+          if (d && (d.id || d.task_id)) taskModal(d.id || d.task_id, function() { self.render(el); });
+          else { toast(upgrading ? "升级任务已提交" : "安装任务已提交"); self.render(el); }
+        }).catch(function(e) { install.disabled = false; toast(e.message || (upgrading ? "升级失败" : "安装失败"), "error", 6000); });
+    };
+    loadVersions();
+  },
   installDialog(el, t) {
+    if (t.key === "nginx") return this.installNativeNginxDialog(el, t);
     // PHP 多版本:端口默认避开已装实例的端口。
     // window.__phpUsedPorts 可能过期(装完未刷新页面),打开弹窗时再拉一次
     // 最新实例数据修正默认值;后端亦有端口防撞兜底

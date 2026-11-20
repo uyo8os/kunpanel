@@ -1,10 +1,10 @@
 package websites
 
 import (
-	"net"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +18,7 @@ import (
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/util"
 )
 
@@ -53,17 +54,17 @@ func validateDomains(domain string) error {
 
 // Site 一个网站条目
 type Site struct {
-	ID          string `json:"id"`
-	Domain      string `json:"domain"` // 多个用空格分隔
-	Alias       string `json:"alias"`
-	Type        string `json:"type"` // static / php / phpfpm / proxy
-	Root        string `json:"root"`
-	ProxyTo     string `json:"proxy_to"`
+	ID      string `json:"id"`
+	Domain  string `json:"domain"` // 多个用空格分隔
+	Alias   string `json:"alias"`
+	Type    string `json:"type"` // static / php / phpfpm / proxy
+	Root    string `json:"root"`
+	ProxyTo string `json:"proxy_to"`
 	// 反代/PHP 站点发送给上游的 Host 头:空 = $http_host(默认),
 	// 可自定义域名或变量(如 api.example.com、$host)
-	ProxyHost  string `json:"proxy_host,omitempty"`
-	Port       int    `json:"port"` // 监听端口,默认 80
-	Enabled    bool   `json:"enabled"`
+	ProxyHost   string `json:"proxy_host,omitempty"`
+	Port        int    `json:"port"` // 监听端口,默认 80
+	Enabled     bool   `json:"enabled"`
 	SslCertID   string `json:"ssl_cert_id"`  // 绑定的证书 ID,空 = 未启用 HTTPS
 	SslRedirect bool   `json:"ssl_redirect"` // HTTP 强制跳转 HTTPS
 	AuthEnabled bool   `json:"auth_enabled"` // 密码访问(HTTP Basic Auth)
@@ -85,10 +86,10 @@ type Site struct {
 	RateLimit int `json:"rate_limit,omitempty"`
 	// 反向代理负载均衡后端(非空时替代 ProxyTo,加权轮询)
 	Upstreams []Upstream `json:"upstreams,omitempty"`
-	CreatedAt      string `json:"created_at"`
-	Remark         string `json:"remark"`
-	PhpKey    string    `json:"php_key,omitempty"` // 使用的 PHP 实例键(php/php82...;空=默认)
-	FpmPass   string    `json:"fpm_pass,omitempty"` // phpfpm 站点:fastcgi 上游(unix:... 或 host:port)
+	CreatedAt string     `json:"created_at"`
+	Remark    string     `json:"remark"`
+	PhpKey    string     `json:"php_key,omitempty"`  // 使用的 PHP 实例键(php/php82...;空=默认)
+	FpmPass   string     `json:"fpm_pass,omitempty"` // phpfpm 站点:fastcgi 上游(unix:... 或 host:port)
 	// 子域名绑定:子域名指向站点下的子目录(如 m.example.com → example.com/m)
 	Subs []SiteSub `json:"subs,omitempty"`
 }
@@ -186,7 +187,8 @@ type ReloadMode struct {
 var WafEnabled func() bool
 
 func wafOn() bool {
-	return WafEnabled != nil && WafEnabled()
+	// 原生 Nginx 不依赖面板的 Lua WAF；旧容器的 WAF 设置不得污染其站点配置。
+	return WafEnabled != nil && WafEnabled() && DetectNginx().Target != ManagedNginxBinary()
 }
 
 // RewriteAllConfs 按当前状态重新生成全部已启用站点配置并重载(WAF 启停时调用)
@@ -215,6 +217,26 @@ var (
 	ngDetCacheAt time.Time
 )
 
+// ManagedNginxBinary 是面板管理的原生 Nginx 固定入口，版本切换由安装器维护。
+func ManagedNginxBinary() string {
+	return nativenginx.Binary()
+}
+
+func managedNginxPrefix() string {
+	return nativenginx.Prefix()
+}
+
+func managedNginxConfig() string {
+	return nativenginx.ConfigPath()
+}
+
+// InvalidateNginxCache 在原生安装或卸载之后刷新网关检测。
+func InvalidateNginxCache() {
+	ngDetMu.Lock()
+	ngDetCacheAt = time.Time{}
+	ngDetMu.Unlock()
+}
+
 // DetectNginx 检测网关(容器/宿主机),带 5s 缓存避免高频 docker exec
 func DetectNginx() ReloadMode {
 	ngDetMu.Lock()
@@ -232,6 +254,10 @@ func DetectNginx() ReloadMode {
 }
 
 func detectNginxReal() ReloadMode {
+	// 已安装但暂未运行的服务仍是面板管理的网关。
+	if st, err := os.Stat(ManagedNginxBinary()); err == nil && !st.IsDir() {
+		return ReloadMode{Mode: "host", Target: ManagedNginxBinary()}
+	}
 	// 面板管理的容器(应用商店的 OpenResty 与 Nginx 均可)
 	for _, name := range []string{"kun-openresty", "kun-nginx"} {
 		if out, err := exec.Command("docker", "ps", "--filter", "name="+name, "--format", "{{.ID}}").CombinedOutput(); err == nil && strings.TrimSpace(string(out)) != "" {
@@ -962,7 +988,7 @@ func writeConf(s *Site) error {
 			}
 		}
 	}
-		h2 := ""
+	h2 := ""
 	if s.HTTP2 {
 		h2 = " http2"
 	}
@@ -1007,8 +1033,14 @@ func writeConf(s *Site) error {
 		}
 		return '_'
 	}, s.Domain)
-	fmt.Fprintf(&b, "    access_log /var/log/nginx/%s.access.log;\n", safeName)
-	fmt.Fprintf(&b, "    error_log /var/log/nginx/%s.error.log;\n\n", safeName)
+	logDir := siteNginxLogDir(mode)
+	if mode.Target == ManagedNginxBinary() {
+		if err := os.MkdirAll(logDir, 0o755); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(&b, "    access_log %s/%s.access.log;\n", logDir, safeName)
+	fmt.Fprintf(&b, "    error_log %s/%s.error.log;\n\n", logDir, safeName)
 	if sslLines != "" {
 		b.WriteString("    # HTTPS 证书\n" + sslLines + "\n")
 	}
@@ -1124,7 +1156,7 @@ func writeConf(s *Site) error {
 			if wafOn() {
 				b.WriteString("    access_by_lua_file /usr/local/kunwaf/waf.lua;\n")
 			}
-			fmt.Fprintf(&b, "    access_log /var/log/nginx/%s.access.log;\n", safeName+"."+strings.Split(sub.SubDomain, ".")[0])
+			fmt.Fprintf(&b, "    access_log %s/%s.access.log;\n", logDir, safeName+"."+strings.Split(sub.SubDomain, ".")[0])
 			idx := strings.TrimSpace(s.IndexFiles)
 			if idx == "" {
 				// phpfpm 站点的子域名块同样以 index.php 打头(与主块一致)
@@ -1133,7 +1165,7 @@ func writeConf(s *Site) error {
 			b.WriteString(fmt.Sprintf("    root %s;\n    index %s;\n\n", dir, idx))
 			switch s.Type {
 			case "php":
-				b.WriteString(fmt.Sprintf("    location / {\n        proxy_pass %s;\n", strings.TrimSuffix(s.ProxyTo, "/") + "/" + sub.Dir + "/"))
+				b.WriteString(fmt.Sprintf("    location / {\n        proxy_pass %s;\n", strings.TrimSuffix(s.ProxyTo, "/")+"/"+sub.Dir+"/"))
 				b.WriteString(`        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -1190,11 +1222,16 @@ func Reload() error {
 			return fmt.Errorf("重载失败: %s", strings.TrimSpace(string(out)))
 		}
 	case "host":
-		out, err := exec.Command("nginx", "-t").CombinedOutput()
+		binary := mode.Target
+		args := []string{}
+		if binary == ManagedNginxBinary() {
+			args = []string{"-p", managedNginxPrefix() + string(filepath.Separator), "-c", managedNginxConfig()}
+		}
+		out, err := exec.Command(binary, append(args, "-t")...).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("配置检测失败: %s", strings.TrimSpace(string(out)))
 		}
-		out, err = exec.Command("nginx", "-s", "reload").CombinedOutput()
+		out, err = exec.Command(binary, append(args, "-s", "reload")...).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("重载失败: %s", strings.TrimSpace(string(out)))
 		}
@@ -1202,6 +1239,13 @@ func Reload() error {
 		return fmt.Errorf("未检测到可用的 Nginx/OpenResty,请先在应用商店安装 OpenResty")
 	}
 	return nil
+}
+
+func siteNginxLogDir(mode ReloadMode) string {
+	if mode.Target == ManagedNginxBinary() {
+		return filepath.Join(baseDir(), "logs")
+	}
+	return "/var/log/nginx"
 }
 
 // SetSiteSSL 绑定/解绑站点 HTTPS 证书

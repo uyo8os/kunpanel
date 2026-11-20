@@ -2,7 +2,9 @@ package server
 
 import (
 	"net/http"
+	"path/filepath"
 
+	"kunpanel/internal/config"
 	"kunpanel/internal/monhist"
 	"kunpanel/internal/websites"
 	"kunpanel/internal/webstat"
@@ -16,8 +18,17 @@ func (s *Server) handleWebStats(w http.ResponseWriter, r *http.Request) {
 	}
 	mode := websites.DetectNginx()
 	container, logPath := webstat.LogPaths(mode.Mode, mode.Target)
+	if mode.Mode == "host" && mode.Target == websites.ManagedNginxBinary() {
+		logPath = filepath.Join(config.DataDir(), "websites", "logs", "access.log")
+	}
 
-	content, err := webstat.GetLogContent(container, logPath, lines)
+	var content string
+	var err error
+	if mode.Mode == "host" && mode.Target == websites.ManagedNginxBinary() {
+		content, err = webstat.GetNativeLogContent(filepath.Dir(logPath), lines)
+	} else {
+		content, err = webstat.GetLogContent(container, logPath, lines)
+	}
 	if err != nil {
 		Fail(w, http.StatusInternalServerError, "读取日志失败: "+err.Error())
 		return

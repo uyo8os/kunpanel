@@ -13,6 +13,7 @@ import (
 
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/taskx"
 	"kunpanel/internal/util"
 	"kunpanel/internal/websites"
@@ -52,6 +53,10 @@ func (s *Server) handleAppInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, ok := appstore.GetTemplate(req.Key); !ok {
 		Fail(w, http.StatusBadRequest, "未知应用")
+		return
+	}
+	if req.Key == "nginx" {
+		s.installNativeNginx(w, req.Params)
 		return
 	}
 	if cliOK, _ := dockerx.Installed(); !cliOK {
@@ -94,6 +99,12 @@ func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
 		RemoveData bool `json:"remove_data"`
 	}
 	_ = readJSON(r, &req)
+	if key == "nginx" {
+		if _, ok := appstore.NativeNginxInstance(); ok {
+			s.nativeNginxAction(w, action)
+			return
+		}
+	}
 	// 与安装互斥,防卸载中重建/启停中删除记录等状态错乱
 	unlock := lockAppOp(key)
 	defer unlock()
@@ -210,6 +221,12 @@ func isPHPRuntimeKey(key string) bool {
 // handleAppRuntimeInfo 运行时信息:版本号(PHP/php-fpm/nginx/openresty -v)、PHP 已加载扩展
 func (s *Server) handleAppRuntimeInfo(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if key == "nginx" {
+		if inst, ok := appstore.NativeNginxInstance(); ok {
+			OK(w, map[string]any{"key": key, "version": inst.Params["Version"], "status": nativenginx.Status(), "install_mode": "native"})
+			return
+		}
+	}
 	container, ok := runtimeContainerOf(key)
 	if !ok {
 		Fail(w, http.StatusBadRequest, "该应用不支持运行时管理")
@@ -351,6 +368,12 @@ func (s *Server) handleAppRuntimeAction(w http.ResponseWriter, r *http.Request) 
 	action := r.PathValue("action")
 	if action == "" {
 		action = r.URL.Query().Get("action")
+	}
+	if key == "nginx" {
+		if _, ok := appstore.NativeNginxInstance(); ok {
+			s.nativeNginxRuntimeAction(w, r, action)
+			return
+		}
 	}
 	container, ok := runtimeContainerOf(key)
 	if !ok {

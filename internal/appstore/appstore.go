@@ -16,6 +16,7 @@ import (
 
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/util"
 )
 
@@ -53,6 +54,7 @@ type Instance struct {
 	Dir       string            `json:"dir"`
 	CreatedAt string            `json:"created_at"`
 	Status    string            `json:"status"` // 实时填充:running / exited / missing
+	InstallMode string          `json:"install_mode,omitempty"` // native; 旧记录为空表示 Docker
 }
 
 // ---------- 内置应用目录 ----------
@@ -886,6 +888,10 @@ func List() ([]Instance, error) {
 		states = dockerx.ContainerStates()
 	}
 	for i := range list {
+		if list[i].Key == "nginx" && list[i].InstallMode == "native" {
+			list[i].Status = nativenginx.Status()
+			continue
+		}
 		if !cliOK {
 			list[i].Status = "unknown"
 			continue

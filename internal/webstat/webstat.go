@@ -7,6 +7,7 @@ import (
 	"kunpanel/internal/util"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -196,4 +197,31 @@ func LogPaths(mode, target string) (container, accessLog string) {
 		return "", "/var/log/nginx/access.log"
 	}
 	return "", ""
+}
+
+// GetNativeLogContent 合并原生网关的全局及站点访问日志，仅保留最后 lines 行。
+func GetNativeLogContent(dir string, lines int) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	if lines <= 0 {
+		return "", nil
+	}
+	var rows []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || (name != "access.log" && !strings.HasSuffix(name, ".access.log")) {
+			continue
+		}
+		content, err := GetLogContent("", filepath.Join(dir, name), lines)
+		if err != nil || content == "" {
+			continue
+		}
+		rows = append(rows, strings.Split(content, "\n")...)
+		if len(rows) > lines {
+			rows = append([]string(nil), rows[len(rows)-lines:]...)
+		}
+	}
+	return strings.Join(rows, "\n"), nil
 }

@@ -48,6 +48,12 @@ bash kp-install.sh --uninstall              # 卸载
 ```
 </details>
 
+### 原生 Nginx
+
+在「应用商店」选择 Nginx，可从官方 Stable 或 Mainline 获取当前版本，下载源码并编译为面板管理的原生服务。该功能目前支持 Linux systemd，需 root 权限及可访问 Nginx 官方站点；编译依赖缺失时会通过系统软件源安装。安装、版本切换和卸载会保留网站数据及配置。
+
+原生 Nginx 不使用面板内置 WAF。已有 Nginx、网关容器、端口占用或旧容器/WAF 配置时，请先检查并处理，再安装原生版本；其他应用仍使用各自现有的安装方式。
+
 ### Windows
 
 下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,

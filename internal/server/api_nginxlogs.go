@@ -38,7 +38,11 @@ func (s *Server) handleNginxLogs(w http.ResponseWriter, r *http.Request) {
 		}
 		OK(w, map[string]any{"source": mode.Target, "content": strings.TrimRight(out, "\n")})
 	case "host":
-		b, err := os.ReadFile("/var/log/nginx/" + logType + ".log")
+		logDir := "/var/log/nginx"
+		if mode.Target == websites.ManagedNginxBinary() {
+			logDir = siteLogsDir()
+		}
+		b, err := os.ReadFile(filepath.Join(logDir, logType+".log"))
 		if err != nil {
 			Fail(w, http.StatusInternalServerError, "读取日志失败: "+err.Error())
 			return
@@ -113,7 +117,11 @@ func (s *Server) handleNginxLogsClear(w http.ResponseWriter, r *http.Request) {
 		path := containerLogPath(mode.Target, req.Type)
 		_, _ = exec.Command("docker", "exec", mode.Target, "sh", "-c", ": > "+path).CombinedOutput()
 	} else if mode.Mode == "host" {
-		_ = os.Truncate("/var/log/nginx/"+req.Type+".log", 0)
+		logDir := "/var/log/nginx"
+		if mode.Target == websites.ManagedNginxBinary() {
+			logDir = siteLogsDir()
+		}
+		_ = os.Truncate(filepath.Join(logDir, req.Type+".log"), 0)
 	}
 	n := truncateSiteLogs()
 	OK(w, map[string]any{"cleared": n})
