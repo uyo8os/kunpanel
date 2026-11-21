@@ -163,6 +163,10 @@ func (s *Server) registerAPI() {
 	m.Handle("POST /api/v1/db/select", wrap(http.HandlerFunc(s.handleDbSelect)))
 	m.Handle("POST /api/v1/db/{key}/create-db", wrap(http.HandlerFunc(s.handleDbCreate)))
 	m.Handle("POST /api/v1/db/{key}/drop-db", wrap(http.HandlerFunc(s.handleDbDrop)))
+	m.Handle("GET /api/v1/db/{key}/connections", wrap(http.HandlerFunc(s.handleDbConnections)))
+	m.Handle("GET /api/v1/db/{key}/connections/{database}", wrap(http.HandlerFunc(s.handleDbConnection)))
+	m.Handle("POST /api/v1/db/{key}/connections/{database}", wrap(http.HandlerFunc(s.handleDbConnection)))
+	m.Handle("POST /api/v1/db/{key}/connections/{database}/password", wrap(http.HandlerFunc(s.handleDbConnectionPassword)))
 	m.Handle("POST /api/v1/db/{key}/root-password", wrap(http.HandlerFunc(s.handleDbRootPassword)))
 
 	// 网站流量统计 + 监控历史

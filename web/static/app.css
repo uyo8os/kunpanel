@@ -388,6 +388,9 @@ html[data-theme="dark"] .dd-header { background: #232936; }
 .table tbody tr:hover { background: var(--primary-light); }
 .table tbody tr:last-child td { border-bottom: none; }
 .table .ops { display: flex; gap: 4px; flex-wrap: wrap; }
+.db-list { min-width: 720px; }
+.db-secret-field { display: flex; align-items: center; gap: 8px; }
+.db-secret-field .input { flex: 1; min-width: 0; }
 .table .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
 .table .ellipsis { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
 
@@ -1141,27 +1144,6 @@ tr.fm-selected { background: var(--primary-light); }
   border-color: var(--primary); color: var(--primary); background: var(--primary-light);
   font-weight: 600; box-shadow: 0 0 0 1px var(--primary);
 }
-.db-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-.db-card {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 11px; padding: 13px 15px;
-  border: 1px solid var(--border-light); border-radius: 10px; background: var(--card);
-  cursor: pointer; transition: all .13s; min-width: 0;
-}
-/* 卡片内的授权用户行:独占一整行,避免被 flex 挤成细条 */
-.db-c-ausers {
-  flex: 1 1 100%; margin: 0; padding: 6px 2px 0; border-top: 1px dashed var(--border-light);
-  font-size: 11px; color: var(--text-3); line-height: 1.6; word-break: break-all;
-}
-.db-card:hover { border-color: var(--primary); }
-.db-card.active { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 0 0 1px var(--primary); }
-.db-c-ico {
-  width: 34px; height: 34px; border-radius: 9px; background: var(--bg-2);
-  display: flex; align-items: center; justify-content: center; flex: none;
-}
-.db-c-ico svg { width: 16px; height: 16px; color: var(--primary); }
-.db-card.active .db-c-ico { background: var(--card); }
-.db-c-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
-.db-c-ops { margin-left: auto; flex: none; display: flex; gap: 6px; }
 .db-stat-line b { color: var(--text); font-variant-numeric: tabular-nums; }
 /* 拦截日志类型彩色 tag */
 .tag-sql { background: #fee2e2; color: #dc2626; }

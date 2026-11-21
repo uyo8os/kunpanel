@@ -63,7 +63,7 @@ func (s *Server) handleDbUserDelete(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, "参数错误")
 		return
 	}
-	if err := dbmgr.DropUser(r.PathValue("key"), req.User, req.Host); err != nil {
+	if err := dbmgr.RemoveApplicationEntity(r.PathValue("key"), "", req.User, req.Host); err != nil {
 		Fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -80,7 +80,7 @@ func (s *Server) handleDbUserPassword(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, "参数错误")
 		return
 	}
-	if err := dbmgr.SetUserPassword(r.PathValue("key"), req.User, req.Host, req.Password); err != nil {
+	if err := dbmgr.UpdateApplicationUser(r.PathValue("key"), req.User, req.Host, req.Password); err != nil {
 		Fail(w, http.StatusBadRequest, err.Error())
 		return
 	}

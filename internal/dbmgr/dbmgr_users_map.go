@@ -90,7 +90,7 @@ func UserDBGrants(key string) ([]UserDBGrant, error) {
 			if u == "" || systemDBUsers[u] {
 				continue
 			}
-			out = append(out, UserDBGrant{User: u, Host: h, Scope: db, Privs: strings.Join(rowGrants(rDB.tr, row), ", ")})
+			out = append(out, UserDBGrant{User: u, Host: h, Scope: strings.ReplaceAll(db, "\\_", "_"), Privs: strings.Join(rowGrants(rDB.tr, row), ", ")})
 		}
 	}
 	// 全局授权(mysql.user):scope = *;无任何权限(仅 USAGE)的跳过

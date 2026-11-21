@@ -997,12 +997,12 @@ PAGES.websites = {
         '<div id="w-dyn"></div>' +
         '<div class="wz-sec"><span class="ws-n">4</span>可选项</div>' +
         '<div class="wz-db-card"><div class="wz-db-head" id="w-db-head"><span class="qi-icon" style="color:#60a5fa">' + I("database") + '</span>' +
-        '<div><b>同时创建数据库</b><span class="wz-db-sub">自动建库,部署程序时直接使用(MySQL/MariaDB)</span></div>' +
+        '<div><b>同时创建数据库</b><span class="wz-db-sub">创建数据库和专用应用账号</span></div>' +
         '<span class="switch" id="w-db-sw"></span></div>' +
         '<div id="w-db-fields" style="display:none;margin-top:12px">' +
         '<div class="form-item"><label>数据库实例</label><select class="select" id="w-db-inst"></select></div>' +
         '<div class="form-item"><label>数据库名</label><input class="input mono" id="w-db-name" placeholder="小写字母/数字/下划线"></div>' +
-        '<div class="help">需要运行中的 MySQL 或 MariaDB 实例。库名与访问密码可在数据库页面管理。</div></div></div>' +
+        '<div class="help">面板生成密码，网站创建后会显示连接信息。</div></div></div>' +
         '<div class="form-item" style="margin-top:14px"><label>备注</label><input class="input" id="w-remark" placeholder="站点用途说明(可选)"></div>',
       footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">' + I("plus") + ' 创 建</button>',
     });
@@ -1065,7 +1065,7 @@ PAGES.websites = {
           var running = (list || []).filter(function(x) { return x.running; });
           sel.innerHTML = running.length
             ? running.map(function(x) { return '<option value="' + esc(x.key) + '">' + esc(x.name || x.key) + (x.running ? "" : "(未运行)") + "</option>"; }).join("")
-            : '<option value="">(无可用实例，请先安装或启动 MySQL)</option>';
+            : '<option value="">无可用实例，请先启动数据库服务</option>';
         }).catch(function() {});
       }
     };
@@ -1096,16 +1096,17 @@ PAGES.websites = {
         var dbname = qs("#w-db-name", m.el).value.trim();
         if (!inst) { toast("没有可用的数据库实例", "error"); return; }
         if (!dbname) { toast("请填写数据库名", "error"); return; }
-        body.db_instance = inst; body.db_name = dbname;
+        body.db_instance = inst; body.db_name = dbname; body.db_account = { note: domain };
       }
+      this.disabled = true;
       try {
-        var d = await api("/websites", { method: "POST", body: body });
+        var d = await api("/websites", { method: "POST", timeout: 0, body: body });
         toast("网站创建成功");
         if (d.db_error) toast("站点已创建,但数据库创建失败: " + d.db_error, "error", 6000);
-        else if (body.db_instance) toast("数据库 " + body.db_name + " 已创建");
         m.close();
         self.render(el);
-      } catch (e) { toast(e.message, "error", 5000); }
+        if (d.db_connection) PAGES.databases.connectionDialog(d.db_connection);
+      } catch (e) { toast(e.message, "error", 5000); this.disabled = false; }
     };
   },
   /* 网站设置(宝塔式页签) */
@@ -3227,11 +3228,11 @@ PAGES.apps = {
       if (pel) PAGES.apps.render(pel);
     };
   },
-  async openNativePMA(database) {
+  async openNativePMA(database, name) {
     var tab = window.open("about:blank", "_blank");
     if (tab) tab.opener = null;
     try {
-      var result = await api("/apps/instances/phpmyadmin-native/runtime/access", {method: "POST", body: {database: database || ""}});
+      var result = await api("/apps/instances/phpmyadmin-native/runtime/access", {method: "POST", body: {database: database || "", name: name || ""}});
       if (tab) tab.location.replace(result.url);
       else location.assign(result.url);
     } catch (e) {
@@ -3843,15 +3844,13 @@ PAGES.apps = {
 PAGES.databases = {
   title: "数据库",
   tab: {},
-  SYSTEM_DBS: ["information_schema", "mysql", "performance_schema", "sys", "postgres"],
+  SYSTEM_DBS: ["information_schema", "mysql", "performance_schema", "sys", "postgres", "template0", "template1"],
   async render(el) {
     el.innerHTML = skeletonCards(2);
     let instances = [];
     try { instances = (await api("/db/instances")) || []; }
     catch (e) { el.innerHTML = emptyState("warn", "加载失败", e.message); return; }
     var running = instances.filter((i) => i.running);
-    var hasNativePG = instances.some((i) => i.key === "postgresql-native");
-    var notRunning = instances.filter((i) => !i.running && (!hasNativePG || i.key !== "postgresql"));
     var typeNames = Object.fromEntries(instances.map(function(i) { return [i.key, i.native && i.type === "mysql" ? "原生 MySQL" : i.name]; }));
 
     var self = this;
@@ -3900,7 +3899,7 @@ PAGES.databases = {
     var head = '<div class="waf-hero db-hero">' +
       '<div class="waf-hero-left">' + iconBox("database", 46) +
       '<div class="stat-meta"><h3>' + esc(typeNames[this.tab.key] || this.tab.key) + " " + stateTag(true, "运行中", "已停止") + "</h3>" +
-      '<div class="stat-line db-stat-line">业务库 <b id="db-stat-dbs">-</b> 个 · 数据表 <b id="db-stat-tables">-</b> 张 · 备份 <b id="db-stat-baks">-</b> 份</div></div></div>' +
+      '<div class="stat-line db-stat-line">业务库 <b id="db-stat-dbs">-</b> 个</div></div></div>' +
       '<div class="waf-hero-right">' +
       (isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-users">' + I("key") + " 用户管理</button>" : "") +
       (isMySQLLike && !activeDB.native ? '<button class="btn btn-sm btn-plain" id="db-repl">' + I("refresh") + " 主从同步</button>" : "") +
@@ -3915,8 +3914,6 @@ PAGES.databases = {
         var on = self.tab.key === i.key;
         return '<span class="db-chip' + (on ? " active" : "") + '" data-inst="' + esc(i.key) + '"><span class="dot"></span>' + esc(typeNames[i.key] || i.key) + "</span>";
       }).join("") + "</div>";
-    } else if (notRunning.length) {
-      instBar = '<div class="db-chipbar"><span class="settings-hint" style="margin:0">还可安装:' + notRunning.map(function(i) { return esc(typeNames[i.key] || i.key); }).join(" / ") + '(应用商店一键安装)</span></div>';
     }
 
     el.innerHTML = head + instBar +
@@ -3953,15 +3950,7 @@ PAGES.databases = {
         } catch (e) { toast(e.message, "error", 6000); }
       };
     };
-    qs("#db-new", el).onclick = async function() {
-      var r = await promptDlg("新建数据库", [{ key: "name", label: "库名(小写字母/数字/下划线)", required: true }]);
-      if (!r) return;
-      try {
-        await api("/db/" + self.tab.key + "/create-db", { method: "POST", body: { name: r.name.trim() } });
-        toast("数据库已创建");
-        self.render(el);
-      } catch (e) { toast(e.message, "error"); }
-    };
+    qs("#db-new", el).onclick = function() { self.accountDialog(el, activeDB.key); };
     // 实例切换
     qsa("[data-inst]", el).forEach(function(c) {
       c.onclick = function() {
@@ -3970,7 +3959,103 @@ PAGES.databases = {
       };
     });
 
-    await this.loadDbList(el);
+    await this.loadDbList(el, nativePMA && isMySQLLike, pma && !activeDB.native && isMySQLLike ? pma.url : "");
+  },
+  accountDialog(el, key, database, rotate) {
+    var self = this;
+    var path = "/db/" + encodeURIComponent(key);
+    var edit = !!database;
+    var m = modal({
+      title: rotate ? "修改数据库账号密码" : edit ? "为 " + database + " 创建账号" : "添加数据库",
+      width: 540,
+      body: (!edit ? '<div class="form-item required"><label for="dbc-name">数据库名</label><input class="input mono" id="dbc-name" maxlength="64" placeholder="小写字母、数字或下划线"></div>' +
+        '<label class="radio-line"><input type="checkbox" id="dbc-create-account" checked> 同时创建应用账号</label>' : "") +
+        '<div id="dbc-account-fields">' +
+        (!rotate ? '<div class="form-item"><label for="dbc-user">应用用户名</label><input class="input mono" id="dbc-user" maxlength="32" placeholder="默认使用数据库名" autocomplete="off"></div>' : "") +
+        '<div class="form-item"><label for="dbc-password">应用密码</label><div class="db-secret-field"><input class="input mono" id="dbc-password" type="password" maxlength="64" autocomplete="new-password" placeholder="至少 8 位，留空自动生成">' +
+        '<button class="btn btn-plain" data-act="visible">显示</button><button class="btn btn-plain" data-act="random">随机生成</button></div></div>' +
+        (rotate ? '<div class="help">已连接的应用需要更新配置里的密码。</div>' :
+          '<div class="form-item"><label for="dbc-note">备注</label><input class="input" id="dbc-note" maxlength="120" placeholder="选填"></div>') + '</div>',
+      footer: '<button class="btn btn-plain" data-act="cancel">取消</button><button class="btn btn-primary" data-act="submit">' + (rotate ? "保存新密码" : edit ? "创建账号" : "创建数据库和账号") + '</button>'
+    });
+    var password = qs("#dbc-password", m.el);
+    var createAccount = qs("#dbc-create-account", m.el);
+    var submit = qs('[data-act="submit"]', m.el);
+    if (createAccount) createAccount.onchange = function() {
+      qs("#dbc-account-fields", m.el).hidden = !this.checked;
+      submit.textContent = this.checked ? "创建数据库和账号" : "仅创建数据库";
+    };
+    qs('[data-act="visible"]', m.el).onclick = function() {
+      password.type = password.type === "password" ? "text" : "password";
+      this.textContent = password.type === "password" ? "显示" : "隐藏";
+    };
+    var generatePassword = function() {
+      var bytes = window.crypto.getRandomValues(new Uint8Array(16));
+      password.value = Array.from(bytes, function(n) { return n.toString(16).padStart(2, "0"); }).join("") + "A1!";
+    };
+    qs('[data-act="random"]', m.el).onclick = generatePassword;
+    if (!rotate) generatePassword();
+    qs('[data-act="cancel"]', m.el).onclick = m.close;
+    submit.onclick = async function() {
+      var name = edit ? database : qs("#dbc-name", m.el).value.trim().toLowerCase();
+      if (!name) { toast("请填写数据库名", "error"); return; }
+      var account = {password: password.value};
+      if (!rotate) {
+        account.user = qs("#dbc-user", m.el).value.trim();
+        account.note = qs("#dbc-note", m.el).value.trim();
+      }
+      this.disabled = true;
+      try {
+        var route = edit ? path + "/connections/" + encodeURIComponent(name) + (rotate ? "/password" : "") : path + "/create-db";
+        var body = edit ? account : {name: name};
+        if (!edit && createAccount.checked) body.account = account;
+        var connection = await api(route, {method: "POST", timeout: 0, body: body});
+        m.close();
+        self.render(el);
+        if (connection) self.connectionDialog(connection);
+        else toast("数据库已创建");
+      } catch (e) { toast(e.message || "数据库操作失败", "error", 6000); this.disabled = false; }
+    };
+  },
+  connectionDialog(connection) {
+    var fields = [
+      ["数据库", connection.database], ["主机", connection.host], ["端口", connection.port],
+      ["用户名", connection.user], ["密码", connection.password]
+    ];
+    var m = modal({
+      title: "数据库连接信息", width: 540,
+      body: fields.map(function(field, i) {
+        return '<div class="form-item"><label for="dbconn-' + i + '">' + field[0] + '</label><div class="db-secret-field">' +
+          '<input class="input mono" id="dbconn-' + i + '" type="' + (i === 4 ? "password" : "text") + '" readonly>' +
+          (i === 4 ? '<button class="btn btn-plain" data-visible>显示</button>' : "") +
+          '<button class="btn btn-plain" data-copy="' + i + '">复制</button></div></div>';
+      }).join(""),
+      footer: '<button class="btn btn-primary" data-act="close">完成</button>'
+    });
+    fields.forEach(function(field, i) { qs("#dbconn-" + i, m.el).value = field[1] == null ? "" : field[1]; });
+    qs("[data-visible]", m.el).onclick = function() {
+      var input = qs("#dbconn-4", m.el);
+      input.type = input.type === "password" ? "text" : "password";
+      this.textContent = input.type === "password" ? "显示" : "隐藏";
+    };
+    qsa("[data-copy]", m.el).forEach(function(button) {
+      button.onclick = async function() {
+        var input = qs("#dbconn-" + button.dataset.copy, m.el);
+        try {
+          if (navigator.clipboard) await navigator.clipboard.writeText(input.value);
+          else {
+            var previousType = input.type;
+            input.type = "text";
+            input.select();
+            var copied = document.execCommand("copy");
+            input.type = previousType;
+            if (!copied) throw new Error();
+          }
+          toast("已复制");
+        } catch (e) { toast("请选中文本后手动复制", "error"); }
+      };
+    });
+    qs('[data-act="close"]', m.el).onclick = m.close;
   },
   /* ---- 数据库账号管理 ---- */
   async userMgr() {
@@ -4056,11 +4141,11 @@ PAGES.databases = {
     };
     draw();
   },
-  async userGrant(key, user, host) {
+  async userGrant(key, user, host, database) {
     var self = this;
     var dbs = [];
     try { dbs = (await api("/db/" + key + "/databases")) || []; } catch (e) { /* 读不到也能授全部库 */ }
-    var opts = ['<option value="*">全部库(*.*)</option>'].concat(dbs.filter(function(d) { return self.SYSTEM_DBS.indexOf(d) < 0; }).map(function(d) {
+    var opts = database ? '<option value="' + esc(database) + '">' + esc(database) + '.*</option>' : ['<option value="*">全部库(*.*)</option>'].concat(dbs.filter(function(d) { return self.SYSTEM_DBS.indexOf(d) < 0; }).map(function(d) {
       return '<option value="' + esc(d) + '">' + esc(d) + ".*</option>";
     })).join("");
     var privList = ["SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "INDEX", "ALTER", "CREATE VIEW", "SHOW VIEW", "LOCK TABLES", "REFERENCES", "EXECUTE", "EVENT", "TRIGGER"];
@@ -4190,165 +4275,201 @@ PAGES.databases = {
       } catch (e) { toast(e.message, "error", 8000); }
     };
   },
-  async loadDbList(el) {
-    var self = this;
-    var key = this.tab.key;
+  async loadDbList(el, nativePMA, legacyPMA) {
+    var self = this, key = this.tab.key;
     var wrap = qs("#db-table-wrap", el);
     if (!wrap) return;
-    // 授权映射与库列表并行请求(互不依赖)
-    var dbmapP = (key === "mysql" || key === "mysql-native" || key === "mariadb")
-      ? api("/db/" + key + "/users/dbmap").catch(function() { return { rows: [] }; })
-      : null;
-    var dbs = [];
-    try { dbs = (await api("/db/" + key + "/databases")) || []; }
-    catch (e) { wrap.innerHTML = emptyState("warn", "加载失败", e.message); return; }
-    if (!qs("#db-table-wrap", el)) return;
-    var user = dbs.filter(function(d) { return self.SYSTEM_DBS.indexOf(d) < 0; });
-    var sys = dbs.filter(function(d) { return self.SYSTEM_DBS.indexOf(d) >= 0; });
-    var showSys = this._showSys;
-    var st = qs("#db-stat-dbs", el);
-    if (st) st.textContent = user.length;
-    // 默认选中:只在业务库里选(需在渲染卡片前确定,active 高亮才正确)。
-    // 无业务库时必须置空让管理面板走空态——不能回落 dbs[0](按字母序是
-    // information_schema),否则删光业务库后表列表会显示 61 张系统表
-    if (!this.tab.database || dbs.indexOf(this.tab.database) < 0) {
-      this.tab.database = user[0] || "";
-    }
-    if (!this.tab.database) {
-      var stT0 = document.getElementById("db-stat-tables");
-      if (stT0) stT0.textContent = "0";
-    }
-    // 数据库卡片(库名 + 操作),替代空旷表格
-    function card(d, isSys) {
-      var active = self.tab.database === d;
-      return '<div class="db-card' + (active ? " active" : "") + '" data-dbname="' + esc(d) + '" title="点击管理该库">' +
-        '<span class="db-c-ico">' + I("database") + "</span>" +
-        '<span class="db-c-name mono"><b>' + esc(d) + "</b>" + (isSys ? ' <span class="tag tag-info">系统</span>' : "") + "</span>" +
-        '<span class="db-c-ops">' +
-        (isSys ? "" : '<button class="btn btn-xs btn-plain" data-dbbak="' + esc(d) + '">备份</button>' +
-          '<button class="btn btn-xs btn-danger-plain" data-drop="' + esc(d) + '">删除</button>') +
-        "</span></div>";
-    }
-    var showSysBtn = sys.length
-      ? '<button class="btn btn-xs btn-plain" id="db-showsys" style="margin-left:8px">' + (showSys ? "隐藏系统库" : "显示系统库(" + sys.length + ")") + "</button>"
-      : "";
-    if (user.length || showSys) {
-      wrap.innerHTML = '<div class="db-grid">' +
-        user.map(function(d) { return card(d, false); }).join("") +
-        (showSys ? sys.map(function(d) { return card(d, true); }).join("") : "") +
-        "</div>";
-    } else {
-      wrap.innerHTML = '<div class="db-empty">' + I("database") + '<p>还没有业务数据库</p><p class="help">点击右上角「添加数据库」创建' + (sys.length ? ';系统库 ' + sys.length + ' 个已隐藏' : "") + '</p></div>';
-    }
-
-    // 库卡片显示授权用户(账号↔库 授权映射;异步注入不阻塞卡片渲染)
-    if (dbmapP) {
-      Promise.resolve(dbmapP).then(function(d) {
-        var rows = d.rows || [];
-        if (!rows.length || !qs("[data-dbname]", wrap)) return;
-        var byDB = {}, globals = [];
-        rows.forEach(function(x) {
-          var who = x.user + "@" + x.host;
-          var pv = x.privs || "";
-          var n = pv ? pv.split(",").length : 0;
-          var tag = !n ? "" : (n >= 15 ? "全部" : (pv === "SELECT" ? "只读" : (n >= 4 ? "读写" : pv.split(",").slice(0, 2).join(","))));
-          if (x.scope === "*") { globals.push(who + (tag ? "(" + tag + ")" : "")); return; }
-          (byDB[x.scope] = byDB[x.scope] || []).push(who + (tag ? "(" + tag + ")" : ""));
-        });
-        qsa("[data-dbname]", wrap).forEach(function(card) {
-          var db = card.getAttribute("data-dbname");
-          if (self.SYSTEM_DBS.indexOf(db) >= 0) return;
-          var us = (byDB[db] || []).concat(globals);
-          if (!us.length) return;
-          var div = document.createElement("div");
-          div.className = "db-c-ausers";
-          div.innerHTML = "授权用户: " + us.map(function(x) { return esc(x); }).join("、");
-          card.appendChild(div);
-        });
-      }).catch(function() {});
-    }
-
-    var ssb = qs("#db-showsys", wrap);
+    var base = "/db/" + encodeURIComponent(key);
+    var dbs, connections, failed = false;
+    try {
+      [dbs, connections] = await Promise.all([
+        api(base + "/databases"),
+        api(base + "/connections").catch(function() { failed = true; return []; })
+      ]);
+    } catch (e) { wrap.innerHTML = emptyState("warn", "加载失败", e.message); return; }
+    if (!wrap.isConnected) return;
+    dbs = dbs || [];
+    var credentials = new Map((connections || []).map(function(c) { return [c.database, c]; }));
+    var databases = dbs.filter(function(d) { return !self.SYSTEM_DBS.includes(d); });
+    var system = dbs.filter(function(d) { return self.SYSTEM_DBS.includes(d); });
+    var count = qs("#db-stat-dbs", el);
+    if (count) count.textContent = databases.length;
     var slot = qs("#db-sys-slot", el);
-    if (ssb && slot) {
-      slot.innerHTML = ssb.outerHTML;
-      ssb.remove();
-      qs("#db-showsys", el).onclick = function() { self._showSys = !self._showSys; self.loadDbList(el); };
+    slot.innerHTML = system.length ? '<button class="btn btn-xs btn-plain" id="db-showsys">' +
+      (this._showSys ? "隐藏系统库" : "系统库 (" + system.length + ")") + '</button>' : "";
+    if (system.length) qs("#db-showsys", slot).onclick = function() {
+      self._showSys = !self._showSys;
+      self.loadDbList(el, nativePMA, legacyPMA);
+    };
+
+    var shown = this._showSys ? databases.concat(system) : databases;
+    if (!shown.length) {
+      wrap.innerHTML = '<div class="db-empty">' + I("database") + '<p>还没有业务数据库</p><p class="help">添加数据库时会同时创建应用账号。</p></div>';
+      return;
     }
-    // 点击卡片 = 选中管理
-    qsa("[data-dbname]", wrap).forEach(function(a) {
-      a.onclick = function(e) {
-        if (e.target.closest("button")) return; // 卡内按钮各自处理
-        self.tab.database = a.getAttribute("data-dbname");
-        self.render(el);
+    function button(action, label, danger) {
+      return '<button class="btn btn-xs ' + (danger ? "btn-danger-plain" : "btn-plain") + '" data-db-action="' + action + '">' + label + '</button>';
+    }
+    var mysql = !key.startsWith("postgresql");
+    wrap.innerHTML = '<div class="table-wrap"><table class="table db-list"><thead><tr><th>数据库</th><th>应用用户名</th><th>密码</th><th>备注</th><th>操作</th></tr></thead><tbody>' +
+      shown.map(function(database) {
+        var conn = credentials.get(database);
+        var isSystem = self.SYSTEM_DBS.includes(database);
+        var editable = /^[a-z0-9_]{1,64}$/.test(database);
+        var actions = button("tools", "工具");
+        if (!isSystem) {
+          actions = button("backup", "备份") + button("import", "导入") + actions;
+          if (nativePMA || legacyPMA) actions += button("pma", "phpMyAdmin");
+          if (mysql || conn) actions += button("permissions", "权限");
+          if (conn) actions += button("rotate", "改密");
+          else if (!failed && editable) actions += button("account", "创建账号");
+          if (editable) actions += button("delete", "删除", true);
+        }
+        return '<tr data-database="' + esc(database) + '"><td><b class="mono">' + esc(database) + '</b>' +
+          (isSystem ? ' <span class="tag tag-info">系统</span>' : '') +
+          '</td><td class="mono">' + (conn ? esc(conn.user) : isSystem ? '—' : failed ? '读取失败' : '未绑定') + '</td><td>' +
+          (conn ? '<span aria-label="密码已隐藏">••••••••</span> ' + button("connection", "查看 / 复制") : '—') +
+          '</td><td>' + esc(conn && conn.note || "—") + '</td><td><div class="ops">' + actions + '</div></td></tr>';
+      }).join("") + '</tbody></table></div>';
+    qsa("[data-db-action]", wrap).forEach(function(b) {
+      b.onclick = async function() {
+        var database = b.closest("[data-database]").dataset.database;
+        var action = b.dataset.dbAction;
+        var conn = credentials.get(database);
+        if (action === "account" || action === "rotate") return self.accountDialog(el, key, database, action === "rotate");
+        if (action === "pma") {
+          if (nativePMA) return PAGES.apps.openNativePMA(key, database);
+          window.open(legacyPMA + "index.php?db=" + encodeURIComponent(database), "_blank", "noopener");
+          return;
+        }
+        if (action === "permissions") return self.permissionsDialog(key, database, conn);
+        if (action === "import") return self.importDialog(key, database);
+        if (action === "tools" || action === "backup") {
+          self.tab.database = database;
+          self.tab.view = action;
+          return self.manager(qs("#db-mgr", el), action);
+        }
+        if (action === "connection") {
+          b.disabled = true;
+          try { self.connectionDialog(await api(base + "/connections/" + encodeURIComponent(database))); }
+          catch (e) { toast(e.message, "error"); }
+          finally { b.disabled = false; }
+          return;
+        }
+        if (action === "delete" && await confirmDlg("删除数据库 <b>" + esc(database) + "</b>？库内数据将丢失，数据库账号会保留。", {danger: true})) {
+          try {
+            await api(base + "/drop-db", {method: "POST", body: {name: database}});
+            toast("数据库已删除");
+            if (self.tab.database === database) {
+              self.tab.database = self.tab.view = "";
+              qs("#db-mgr", el).innerHTML = "";
+            }
+            self.loadDbList(el, nativePMA, legacyPMA);
+          } catch (e) { toast(e.message, "error"); }
+        }
       };
     });
-    // 备份 → 选中库并滚到详情
-    qsa("[data-dbbak]", wrap).forEach(function(b) {
-      b.onclick = function(e) {
-        e.stopPropagation();
-        self.tab.database = b.getAttribute("data-dbbak");
-        self.render(el);
-      };
-    });
-    // 删除
-    qsa("[data-drop]", wrap).forEach(function(b) {
-      b.onclick = async function(e) {
-        e.stopPropagation();
-        var d = b.getAttribute("data-drop");
-        if (!(await confirmDlg("确定删除数据库 <b>" + esc(d) + "</b> 吗?库内全部数据将丢失!"))) return;
-        try {
-          await api("/db/" + key + "/drop-db", { method: "POST", body: { name: d } });
-          toast("已删除");
-          if (self.tab.database === d) self.tab.database = "";
-          self.loadDbList(el);
-        } catch (e) { toast(e.message, "error"); }
-      };
-    });
-    await this.manager(qs("#db-mgr", el));
+    if (this.tab.view && shown.includes(this.tab.database)) await this.manager(qs("#db-mgr", el), this.tab.view);
   },
-  async manager(el) {
+  async permissionsDialog(key, database, conn) {
+    if (conn && conn.account_host) return this.userGrant(key, conn.user, conn.account_host, database);
+    if (key.startsWith("postgresql")) {
+      modal({
+        title: "权限 · " + database, width: 480,
+        body: '<div class="help">应用角色 <b class="mono">' + esc(conn.user) + '</b> 可连接此库，在 public 架构中创建对象和读写已授权的数据。</div>'
+      });
+      return;
+    }
+    var self = this;
+    try {
+      var result = await api("/db/" + encodeURIComponent(key) + "/users/dbmap");
+      var rows = (result.rows || []).filter(function(r) { return r.scope === database; });
+      var m = modal({
+        title: "库级权限 · " + database, width: 620,
+        body: rows.length ? tableHTML([
+          {title: "账号", render: function(r) { return esc(r.user + "@" + r.host); }},
+          {title: "权限", render: function(r) { return esc(r.privs); }},
+          {title: "操作", render: function(r) { return '<button class="btn btn-xs btn-plain" data-permission="' + rows.indexOf(r) + '">管理</button>'; }}
+        ], rows) : '<div class="help">暂无库级授权。可在本库这一行创建专用账号。</div>'
+      });
+      qsa("[data-permission]", m.el).forEach(function(b) {
+        b.onclick = function() {
+          var r = rows[Number(b.dataset.permission)];
+          m.close();
+          self.userGrant(key, r.user, r.host, database);
+        };
+      });
+    } catch (e) { toast(e.message, "error"); }
+  },
+  importDialog(key, db) {
+    var m = modal({
+      title: "导入 SQL · " + db, width: 520,
+      body: '<div class="form-item"><label for="db-import-file">备份文件（.sql 或 .sql.gz）</label><input class="input" id="db-import-file" type="file" accept=".sql,.sql.gz,.gz"></div>' +
+        '<div class="help">将对当前数据库执行备份中的 SQL，文件中的语句可能覆盖已有数据。</div>',
+      footer: '<button class="btn btn-plain" data-act="cancel">取消</button><button class="btn btn-primary" data-act="import">导入</button>'
+    });
+    qs('[data-act="cancel"]', m.el).onclick = m.close;
+    qs('[data-act="import"]', m.el).onclick = async function() {
+      var file = qs("#db-import-file", m.el).files[0];
+      if (!file) { toast("请选择 SQL 文件", "error"); return; }
+      this.disabled = true;
+      var form = new FormData();
+      form.append("key", key);
+      form.append("database", db);
+      form.append("file", file);
+      try {
+        var response = await fetch("/api/v1/db/import", {method: "POST", headers: {"Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY)}, body: form});
+        var result = await response.json();
+        if (result.code !== 0) throw new Error(result.message || "导入失败");
+        m.close();
+        taskModal(result.data.id, function(status) { if (status === "success") toast("导入完成"); });
+      } catch (e) { toast(e.message, "error", 6000); this.disabled = false; }
+    };
+  },
+  async manager(el, view) {
     var self = this;
     var key = this.tab.key;
     var db = this.tab.database;
-    if (!el || !db) {
+    if (!el) return;
+    if (!db) {
       el.innerHTML = "";
       return;
     }
 
     el.innerHTML = '<div class="card page-fade"><div class="card-title"><span>当前管理: <b class="mono">' + esc(db) + '</b><span class="tag tag-info" style="margin-left:8px">' + esc(key) + "</span></span></div>" + skeletonTable(3, 3, 140) + "</div>";
 
+    var backup = view === "backup";
     var tables = [];
-    try {
-      tables = (await api("/db/" + key + "/tables?db=" + encodeURIComponent(db))) || [];
-    } catch (e) { tables = []; }
-    if (!qs(".card", el)) return;
-    var stT = document.getElementById("db-stat-tables");
-    if (stT) stT.textContent = tables.length;
+    if (!backup) {
+      try { tables = (await api("/db/" + key + "/tables?db=" + encodeURIComponent(db))) || []; }
+      catch (e) { tables = []; }
+    }
+    if (!el.isConnected || this.tab.key !== key || this.tab.database !== db || this.tab.view !== view) return;
 
+    var displayName = esc(db);
     el.innerHTML = `
-      <div class="grid-2 db-mgr-grid">
+      ${backup ? `<div class="card page-fade" id="db-backup-panel">
+        <div class="card-title"><span>${displayName} · 备份</span><span class="title-actions"><button class="btn btn-sm btn-primary" id="db-backup">${I("download")} 立即备份</button><button class="btn btn-sm btn-plain" id="db-import">${I("upload")} 导入 SQL</button></span></div>
+        <div id="db-bak-list"></div>
+      </div>` : `<div class="grid-2 db-mgr-grid">
         <div class="card page-fade db-tbl-panel" style="padding:14px">
           <div class="card-title" style="font-size:13px;margin-bottom:10px">表列表${tables.length ? ' (' + tables.length + ")" : ""}</div>
           ${tables.length ? '<div class="db-tbl-list">' + tables.map(function(t) { return '<div class="db-tbl-item" data-tbl="' + esc(t) + '" title="' + esc(t) + '">' + I("database", "db-tbl-ico") + '<span class="mono">' + esc(t) + "</span></div>"; }).join("") + "</div>" : '<div style="font-size:12px;color:var(--text-3)">无表</div>'}
         </div>
         <div>
           <div class="card page-fade">
-            <div class="card-title">SQL 控制台</div>
+            <div class="card-title">${displayName} · SQL 控制台</div>
             <textarea class="textarea mono" id="db-sql" rows="4" placeholder="SELECT * FROM table LIMIT 20;"></textarea>
             <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
               <button class="btn btn-primary" id="db-run">${I("play")} 执行</button>
               <button class="btn btn-plain" id="db-sql-clear">${I("close")} 清空</button>
-              <span class="help">以 root 身份执行,支持任意 SQL;点击左侧表名自动填充查询</span>
+              <span class="help">以数据库管理员身份执行。点击表名可运行查询。</span>
             </div>
             <div id="db-result" style="margin-top:14px"></div>
           </div>
-          <div class="card page-fade" style="margin-top:14px">
-            <div class="card-title"><span>备份 / 恢复</span><span class="title-actions"><button class="btn btn-sm btn-primary" id="db-backup">${I("download")} 备份当前库</button><button class="btn btn-sm btn-plain" id="db-import">${I("upload")} 导入 SQL</button></span></div>
-            <div id="db-bak-list"></div>
-          </div>
         </div>
-      </div>`;
+      </div>`}`;
+    el.scrollIntoView({block: "nearest"});
 
     // 点击表名自动 SELECT
     qsa("[data-tbl]", el).forEach(function(n) {
@@ -4366,7 +4487,8 @@ PAGES.databases = {
     if (sqlClear) sqlClear.onclick = function() { qs("#db-sql", el).value = ""; qs("#db-result", el).innerHTML = ""; };
 
     // SQL 执行(表格化结果)
-    qs("#db-run", el).onclick = async function() {
+    var run = qs("#db-run", el);
+    if (run) run.onclick = async function() {
       var sql = qs("#db-sql", el).value.trim();
       var box = qs("#db-result", el);
       if (!sql) { toast("请输入 SQL", "error"); return; }
@@ -4390,13 +4512,12 @@ PAGES.databases = {
       }
     };
 
-    // 备份
+    if (!backup) return;
     var loadBackups = async function() {
       var listEl = qs("#db-bak-list", el);
+      if (!listEl) return;
       try {
-        var list = (await api("/db/" + key + "/backups")) || [];
-        var stB = document.getElementById("db-stat-baks");
-        if (stB) stB.textContent = list.length;
+        var list = (await api("/db/" + key + "/backups?database=" + encodeURIComponent(db))) || [];
         listEl.innerHTML = tableHTML([
           { title: "文件", render: function(r) { return '<span class="mono">' + esc(r.file) + "</span>"; } },
           { title: "大小", width: "100px", render: function(r) { return fmtBytes(r.size); } },
@@ -4430,30 +4551,7 @@ PAGES.databases = {
       } catch (e) { listEl.innerHTML = emptyState("warn", "加载失败", e.message); }
     };
     loadBackups();
-    // 导入 SQL 文件
-    var impBtn = qs("#db-import", el);
-    if (impBtn) impBtn.onclick = function() {
-      var inp = document.createElement("input");
-      inp.type = "file"; inp.accept = ".sql,.sql.gz,.gz"; inp.style.display = "none";
-      inp.onchange = async function() {
-        var f = inp.files[0];
-        if (!f) return;
-        if (!(await confirmDlg("导入 <b>" + esc(f.name) + "</b> 到 <b>" + esc(db) + "</b>?<br><span style='font-size:12px;color:var(--text-3)'>将执行 SQL 导入,同名表会被覆盖</span>", { danger: true }))) { inp.remove(); return; }
-        var fd = new FormData();
-        fd.append("key", key); fd.append("database", db); fd.append("file", f);
-        toast("上传中...", "info");
-        try {
-          var r = await fetch("/api/v1/db/import", { method: "POST", headers: { "Authorization": "Bearer " + localStorage.getItem(TOKEN_KEY) }, body: fd });
-          var d = await r.json();
-          if (d.code !== 0) { toast(d.message || "导入失败", "error", 6000); inp.remove(); return; }
-          inp.remove();
-          taskModal(d.data.id, function() { toast("导入完成"); });
-        } catch (e) { toast(e.message, "error", 6000); inp.remove(); }
-      };
-      document.body.appendChild(inp);
-      inp.click();
-      setTimeout(function() { if (inp.parentNode) inp.remove(); }, 60000);
-    };
+    qs("#db-import", el).onclick = function() { self.importDialog(key, db); };
     qs("#db-backup", el).onclick = async function() {
       toast("正在备份(大库可能需要数分钟)...", "info", 5000);
       try {

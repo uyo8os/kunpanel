@@ -2,6 +2,9 @@ package server
 
 import (
 	"net/http"
+	"slices"
+	"strings"
+	"time"
 
 	"kunpanel/internal/alertx"
 	"kunpanel/internal/dbmgr"
@@ -61,7 +64,17 @@ func (s *Server) handleDbBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDbBackupList(w http.ResponseWriter, r *http.Request) {
-	OK(w, dbmgr.ListBackups(r.PathValue("key")))
+	key := r.PathValue("key")
+	items := dbmgr.ListBackups(key)
+	if db := r.URL.Query().Get("database"); db != "" {
+		prefix := dbmgr.BackupPrefix(key, db)
+		items = slices.DeleteFunc(items, func(item dbmgr.BackupInfo) bool {
+			stamp, found := strings.CutPrefix(strings.TrimSuffix(item.File, ".sql.gz"), prefix)
+			_, err := time.Parse("20060102_150405", stamp)
+			return !found || err != nil
+		})
+	}
+	OK(w, items)
 }
 
 func (s *Server) handleDbBackupDelete(w http.ResponseWriter, r *http.Request) {

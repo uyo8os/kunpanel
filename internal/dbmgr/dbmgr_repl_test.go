@@ -66,13 +66,13 @@ func TestValidatePrivs(t *testing.T) {
 }
 
 func TestGrantTarget(t *testing.T) {
-	if v, _ := grantTarget(""); v != "*.*" {
+	if v, _ := grantTarget("mysql", ""); v != "*.*" {
 		t.Errorf("空库应为 *.*: %v", v)
 	}
-	if v, _ := grantTarget("mydb"); v != "`mydb`.*" {
+	if v, _ := grantTarget("mysql", "mydb"); v != "`mydb`.*" {
 		t.Errorf("库名应加反引号: %v", v)
 	}
-	if _, err := grantTarget("db; DROP DATABASE x"); err == nil {
+	if _, err := grantTarget("mysql", "db; DROP DATABASE x"); err == nil {
 		t.Error("非法库名应被拒")
 	}
 }

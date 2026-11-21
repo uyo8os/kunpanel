@@ -167,7 +167,7 @@ func validatePrivs(privs []string) (string, error) {
 }
 
 // grantTarget 库范围 SQL 形式(db 为空或 * 表示全部库)
-func grantTarget(db string) (string, error) {
+func grantTarget(key, db string) (string, error) {
 	db = strings.TrimSpace(db)
 	if db == "" || db == "*" {
 		return "*.*", nil
@@ -175,7 +175,7 @@ func grantTarget(db string) (string, error) {
 	if !ValidIdentifier(db) {
 		return "", fmt.Errorf("库名格式不正确")
 	}
-	return "`" + db + "`.*", nil
+	return exactMySQLScope(key, db)
 }
 
 // Grant 授权:privs 仅含一项 "ALL" 表示全部权限
@@ -186,7 +186,7 @@ func Grant(key, user, host, db string, privs []string) error {
 	if err := validateUserHost(user, host); err != nil {
 		return err
 	}
-	target, err := grantTarget(db)
+	target, err := grantTarget(key, db)
 	if err != nil {
 		return err
 	}
@@ -210,7 +210,7 @@ func Revoke(key, user, host, db string) error {
 	if err := validateUserHost(user, host); err != nil {
 		return err
 	}
-	target, err := grantTarget(db)
+	target, err := grantTarget(key, db)
 	if err != nil {
 		return err
 	}

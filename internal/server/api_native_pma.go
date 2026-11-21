@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -159,6 +160,7 @@ func (s *Server) nativePMAInfo(w http.ResponseWriter) {
 func (s *Server) nativePMAAccess(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Database string `json:"database"`
+		Name     string `json:"name"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		Fail(w, http.StatusBadRequest, "请求格式有误")
@@ -176,14 +178,18 @@ func (s *Server) nativePMAAccess(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, "同步数据库实例失败: "+err.Error())
 		return
 	}
-	url := opt.URL()
+	address := opt.URL()
 	for _, db := range dbs {
 		if db.Key == req.Database {
-			url += "?server=" + strconv.Itoa(db.ServerID())
+			q := url.Values{"server": {strconv.Itoa(db.ServerID())}}
+			if req.Name != "" {
+				q.Set("db", req.Name)
+			}
+			address += "?" + q.Encode()
 			break
 		}
 	}
-	OK(w, map[string]string{"url": url})
+	OK(w, map[string]string{"url": address})
 }
 
 func (s *Server) nativePMAAccessPassword(w http.ResponseWriter, r *http.Request) {

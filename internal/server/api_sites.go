@@ -91,16 +91,17 @@ func (s *Server) handleSiteSetType(w http.ResponseWriter, r *http.Request) {
 }
 
 type siteAddReq struct {
-	Domain     string `json:"domain"`
-	Type       string `json:"type"`
-	ProxyTo    string `json:"proxy_to"`
-	ProxyHost  string `json:"proxy_host"` // 发往上游的 Host 头(空 = $http_host)
-	Port       int    `json:"port"`
-	Remark     string `json:"remark"`
-	RootDir    string `json:"root_dir"`
-	DbInstance string `json:"db_instance"`
-	DbName     string `json:"db_name"`
-	PhpKey     string `json:"php_key"` // PHP 站点:选择 PHP 实例(多版本)
+	Domain     string                `json:"domain"`
+	Type       string                `json:"type"`
+	ProxyTo    string                `json:"proxy_to"`
+	ProxyHost  string                `json:"proxy_host"` // 发往上游的 Host 头(空 = $http_host)
+	Port       int                   `json:"port"`
+	Remark     string                `json:"remark"`
+	RootDir    string                `json:"root_dir"`
+	DbInstance string                `json:"db_instance"`
+	DbName     string                `json:"db_name"`
+	DbAccount  *dbmgr.AccountOptions `json:"db_account"`
+	PhpKey     string                `json:"php_key"` // PHP 站点:选择 PHP 实例(多版本)
 }
 
 func (s *Server) handleSiteAdd(w http.ResponseWriter, r *http.Request) {
@@ -123,12 +124,21 @@ func (s *Server) handleSiteAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	// 可选:同步创建数据库
 	dbErr := ""
+	var connection *dbmgr.Connection
 	if req.DbInstance != "" && req.DbName != "" {
-		if err := dbmgr.CreateDatabase(req.DbInstance, req.DbName); err != nil {
+		if req.DbAccount != nil {
+			c, err := dbmgr.ProvisionConnection(req.DbInstance, req.DbName, *req.DbAccount, true)
+			if err != nil {
+				dbErr = err.Error()
+			} else {
+				connection = &c
+			}
+		} else if err := dbmgr.CreateDatabase(req.DbInstance, req.DbName); err != nil {
 			dbErr = err.Error()
 		}
 	}
-	OK(w, map[string]any{"site": site, "db_error": dbErr})
+	w.Header().Set("Cache-Control", "no-store")
+	OK(w, map[string]any{"site": site, "db_error": dbErr, "db_connection": connection})
 }
 
 func (s *Server) handleSiteToggle(w http.ResponseWriter, r *http.Request) {

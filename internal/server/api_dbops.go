@@ -20,9 +20,17 @@ type dbOpReq struct {
 
 func (s *Server) handleDbCreate(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
-	var req dbOpReq
+	var req struct {
+		Name    string                `json:"name"`
+		Account *dbmgr.AccountOptions `json:"account"`
+	}
 	if err := readJSON(r, &req); err != nil || req.Name == "" {
 		Fail(w, http.StatusBadRequest, "请填写库名")
+		return
+	}
+	if req.Account != nil {
+		conn, err := dbmgr.ProvisionConnection(key, req.Name, *req.Account, true)
+		sendDBConnection(w, conn, err)
 		return
 	}
 	if err := dbmgr.CreateDatabase(key, req.Name); err != nil {
@@ -39,7 +47,7 @@ func (s *Server) handleDbDrop(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, "请填写库名")
 		return
 	}
-	if err := dbmgr.DropDatabase(key, req.Name); err != nil {
+	if err := dbmgr.RemoveApplicationEntity(key, strings.ToLower(strings.TrimSpace(req.Name)), "", ""); err != nil {
 		Fail(w, http.StatusBadRequest, err.Error())
 		return
 	}

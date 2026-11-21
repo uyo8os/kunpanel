@@ -802,6 +802,16 @@ func saveInstances(list []Instance) error {
 }
 
 // GetTemplate 按 key 找模板
+// InstanceRecord retrieves the installation settings without querying the runtime.
+func InstanceRecord(key string) (Instance, bool) {
+	for _, inst := range loadInstances() {
+		if inst.Key == key {
+			return inst, true
+		}
+	}
+	return Instance{}, false
+}
+
 func GetTemplate(key string) (Template, bool) {
 	for _, t := range Templates() {
 		if t.Key == key {
