@@ -80,7 +80,7 @@ func TestExtensionActivationRestoresPreviousConfiguration(t *testing.T) {
 	ini := extensionIniPath(minor, ext.name)
 	oldIni := []byte(extensionIni(minor, ext, extensionRelease{"5.1.27", strings.Repeat("a", 40)}))
 	newIni := []byte(extensionIni(minor, ext, extensionRelease{"5.1.28", strings.Repeat("b", 40)}))
-	if err := writeExtensionFile(ini, oldIni); err != nil {
+	if err := writeRuntimeFile(ini, oldIni); err != nil {
 		t.Fatal(err)
 	}
 	// This installation has no runnable PHP binary, so validation must fail.

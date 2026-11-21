@@ -60,6 +60,8 @@ bash kp-install.sh --uninstall              # 卸载
 
 在「应用商店 → 已安装 → PHP → 管理 → 扩展」可以安装、更新或卸载 Redis、APCu、Imagick、igbinary、MessagePack 和 Xdebug。面板从各扩展的上游正式版本编译，兼容性由扩展上游决定。同分支 PHP 升级时会先为新版本重编已安装的扩展。
 
+在原生 PHP 的「管理 → 禁用函数」中，可为该 PHP 版本设置 `disable_functions`。用逗号或换行分隔函数名，清空后保存可解除列表里的限制。保存成功后，运行中的 PHP-FPM 会重启。
+
 ### Windows
 
 下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,

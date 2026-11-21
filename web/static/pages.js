@@ -2484,11 +2484,11 @@ PAGES.apps = {
     var self = this;
     var m = modal({
       title: "应用管理 · 原生 PHP", width: 780,
-      body: '<div class="hub-tabs" style="margin-bottom:14px"><div class="hub-tab active" data-native-php-tab="info">运行信息</div><div class="hub-tab" data-native-php-tab="extensions">扩展</div><div class="hub-tab" data-native-php-tab="ini">配置文件</div></div><div id="native-php-view"></div>',
+      body: '<div class="hub-tabs" style="margin-bottom:14px"><div class="hub-tab active" data-native-php-tab="info">运行信息</div><div class="hub-tab" data-native-php-tab="extensions">扩展</div><div class="hub-tab" data-native-php-tab="functions">禁用函数</div><div class="hub-tab" data-native-php-tab="ini">配置文件</div></div><div id="native-php-view"></div>',
       footer: '<button class="btn btn-plain" data-act="close">关 闭</button><button class="btn btn-primary" data-act="upgrade">检查更新 / 升级</button>'
     });
     var view = qs("#native-php-view", m.el), currentTab = "info", original = null, sequence = 0;
-    function dirty() { var input = qs("#native-php-ini", view); return !!(input && original !== null && input.value !== original); }
+    function dirty() { var input = qs("#native-php-editor", view); return !!(input && original !== null && input.value !== original); }
     m.setVeto(function() {
       if (!dirty()) return false;
       confirmDlg("PHP 配置有未保存的修改，确定放弃并关闭吗？", { danger: true }).then(function(ok) { if (ok) m.doClose(); });
@@ -2528,15 +2528,40 @@ PAGES.apps = {
         };
       });
     }
+    function renderConfig(tab, data, base, seq) {
+      var functions = tab === "functions";
+      original = functions ? (data.functions || []).join("\n") : data.content || "";
+      view.innerHTML = '<div class="settings-section"><div class="settings-section-title"><label for="native-php-editor">' + (functions ? "禁用的 PHP 函数" : "php.ini 配置") + '</label></div>' +
+        (functions ? '<p class="help">填入 PHP 内置函数名，用逗号或换行分隔。设置作用于使用该版本的全部站点。清空后保存可解除列表里的限制。</p>' : '') +
+        '<textarea class="textarea mono" id="native-php-editor" rows="' + (functions ? '9' : '22') + '" spellcheck="false"></textarea>' +
+        '<div style="margin-top:10px;display:flex;gap:10px"><button class="btn btn-primary btn-sm" id="native-php-save">保存配置</button><button class="btn btn-plain btn-sm" id="native-php-reset">放弃修改</button></div></div>';
+      var editor = qs("#native-php-editor", view);
+      editor.value = original;
+      qs("#native-php-save", view).onclick = async function() {
+        var button = this, content = editor.value;
+        button.disabled = true;
+        try {
+          var result = await api(base + (functions ? "/php-disabled-functions-save" : "/php-ini-file-save"), { method: "POST", body: { content: content } });
+          if (seq === sequence) {
+            original = functions ? result.functions.join("\n") : content;
+            if (editor.value === content) editor.value = original;
+          }
+          toast((functions ? result.message : result) || "配置已保存");
+        } catch (e) { toast(e.message || "保存失败", "error", 8000); }
+        finally { button.disabled = false; }
+      };
+      qs("#native-php-reset", view).onclick = function() { editor.value = original; };
+    }
     async function show(tab) {
-      if (tab !== currentTab && dirty() && !(await confirmDlg("配置有未保存的修改，确定放弃吗？", { danger: true }))) return;
+      if (dirty() && (tab === currentTab || !(await confirmDlg("配置有未保存的修改，确定放弃吗？", { danger: true })))) return;
       currentTab = tab; original = null;
       var seq = ++sequence;
       qsa("[data-native-php-tab]", m.el).forEach(function(x) { x.classList.toggle("active", x.getAttribute("data-native-php-tab") === tab); });
       view.innerHTML = '<div class="boot-loading" style="height:60px"><div class="spinner"></div></div>';
       try {
         var base = "/apps/instances/" + encodeURIComponent(key) + "/runtime";
-        var d = tab === "info" ? await api(base) : await api(base + (tab === "extensions" ? "/php-ext-catalog" : "/php-ini-get"), { method: "POST", body: {} });
+        var actions = { extensions: "php-ext-catalog", functions: "php-disabled-functions-get", ini: "php-ini-get" };
+        var d = tab === "info" ? await api(base) : await api(base + "/" + actions[tab], { method: "POST", body: {} });
         if (seq !== sequence) return;
         if (tab === "info") {
           var extensions = Array.isArray(d.extensions) ? d.extensions : [];
@@ -2547,17 +2572,7 @@ PAGES.apps = {
         } else if (tab === "extensions") {
           renderExtensions(d || [], base);
         } else {
-          original = d.content || "";
-          view.innerHTML = '<div class="settings-section"><div class="settings-section-title">php.ini 配置</div><textarea class="textarea mono" id="native-php-ini" rows="22" spellcheck="false">' + esc(original) + '</textarea>' +
-            '<div style="margin-top:10px;display:flex;gap:10px"><button class="btn btn-primary btn-sm" id="native-php-save">保存配置</button><button class="btn btn-plain btn-sm" id="native-php-reset">放弃修改</button></div></div>';
-          qs("#native-php-save", view).onclick = async function() {
-            var button = this, content = qs("#native-php-ini", view).value;
-            button.disabled = true;
-            try { var msg = await api(base + "/php-ini-file-save", { method: "POST", body: { content: content } }); if (seq === sequence) original = content; toast(msg || "配置已保存"); }
-            catch (e) { toast(e.message || "保存失败", "error", 8000); }
-            finally { button.disabled = false; }
-          };
-          qs("#native-php-reset", view).onclick = function() { qs("#native-php-ini", view).value = original; };
+          renderConfig(tab, d, base, seq);
         }
       } catch (e) { if (seq === sequence) view.innerHTML = emptyState("warn", "加载失败", e.message); }
     }

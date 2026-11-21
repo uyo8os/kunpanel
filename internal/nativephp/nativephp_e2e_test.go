@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +64,7 @@ func TestNativePHPIntegration(t *testing.T) {
 	if names := os.Getenv("KP_NATIVE_PHP_E2E_EXTENSIONS"); names != "" {
 		testNativePHPExtensions(t, m, dir, strings.Split(names, ","))
 	}
+	testNativePHPDisabledFunctions(t, m, dir)
 	script := filepath.Join(dir, "index.php")
 	if err = os.WriteFile(script, []byte(`<?php echo "kunpanel-php-fpm:" . PHP_VERSION;`), 0644); err != nil {
 		t.Fatal(err)
@@ -93,6 +95,61 @@ func TestNativePHPIntegration(t *testing.T) {
 	}
 	if _, err = os.Stat(IniPath(m)); err != nil {
 		t.Fatalf("config removed: %v", err)
+	}
+}
+
+func testNativePHPDisabledFunctions(t *testing.T, minor, dir string) {
+	t.Helper()
+	ini := IniPath(minor)
+	old, err := os.ReadFile(ini)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ini, append(slices.Clone(old), "\n[PHP]\ndisable_functions = strrev\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.WriteFile(ini, old, 0o644) })
+	got, err := DisabledFunctions(minor)
+	if err != nil || !slices.Equal(got, []string{"strrev"}) {
+		t.Fatalf("existing php.ini functions: %v (%v)", got, err)
+	}
+	got, restarted, err := SetDisabledFunctions(minor, "STRREV,phpinfo")
+	if err != nil || !restarted || !slices.Equal(got, []string{"strrev", "phpinfo"}) {
+		t.Fatalf("disable functions: %v, restart %v (%v)", got, restarted, err)
+	}
+	script := filepath.Join(dir, "functions.php")
+	if err := os.WriteFile(script, []byte(`<?php echo function_exists('strrev') ? 'function-available' : 'function-disabled';`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, err := fpmRequest(Socket(minor), script)
+	if err != nil || !strings.Contains(body, "function-disabled") {
+		t.Fatalf("expected an unavailable function: %s (%v)", body, err)
+	}
+	managed := filepath.Join(ScanDir(minor), disabledFunctionsINI)
+	before, err := os.ReadFile(managed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	override := filepath.Join(ScanDir(minor), "zz-test-disabled-functions.ini")
+	if err := os.WriteFile(override, []byte("disable_functions = str_rot13\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := SetDisabledFunctions(minor, "str_shuffle"); err == nil {
+		t.Fatal("saved a list overridden by another configuration file")
+	}
+	after, err := os.ReadFile(managed)
+	if err != nil || !slices.Equal(before, after) {
+		t.Fatalf("could not restore original disabled functions: %v", err)
+	}
+	if err := os.Remove(override); err != nil {
+		t.Fatal(err)
+	}
+	if _, restarted, err = SetDisabledFunctions(minor, ""); err != nil || !restarted {
+		t.Fatalf("clear disabled functions: restart %v (%v)", restarted, err)
+	}
+	body, err = fpmRequest(Socket(minor), script)
+	if err != nil || !strings.Contains(body, "function-available") {
+		t.Fatalf("expected a restored function: %s (%v)", body, err)
 	}
 }
 

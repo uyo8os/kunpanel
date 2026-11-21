@@ -113,6 +113,31 @@ func (s *Server) nativePHPRuntimeAction(w http.ResponseWriter, r *http.Request, 
 	}
 	minor := inst.Params["Minor"]
 	switch action {
+	case "php-disabled-functions-get":
+		names, err := nativephp.DisabledFunctions(minor)
+		if err != nil {
+			Fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		OK(w, map[string]any{"functions": names})
+	case "php-disabled-functions-save":
+		var req struct {
+			Content *string `json:"content"`
+		}
+		if err := readJSON(r, &req); err != nil || req.Content == nil || len(*req.Content) > 64*1024 {
+			Fail(w, http.StatusBadRequest, "禁用函数列表格式错误或过长")
+			return
+		}
+		names, restarted, err := nativephp.SetDisabledFunctions(minor, *req.Content)
+		if err != nil {
+			Fail(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		msg := "已保存禁用函数"
+		if restarted {
+			msg += "并重启 PHP-FPM"
+		}
+		OK(w, map[string]any{"functions": names, "message": msg})
 	case "php-ini-get":
 		b, err := os.ReadFile(nativephp.IniPath(minor))
 		if err != nil {

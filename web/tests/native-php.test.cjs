@@ -75,6 +75,30 @@ test("native PHP extension install submits only the catalog name to the selected
   assert.equal(task, "extension-task");
 });
 
+test("native PHP disabled functions loads existing settings and can save an empty list", async () => {
+  const base = "/apps/instances/php84/runtime";
+  const tab = {getAttribute: () => "functions", classList: {toggle() {}}};
+  const {apps, control, calls} = setup(undefined, {
+    groups: {"[data-native-php-tab]": [tab]},
+    responses: {
+      [base]: {version: "8.4.28", status: "running"},
+      [base + "/php-disabled-functions-get"]: {functions: ["exec", "system"]},
+      [base + "/php-disabled-functions-save"]: {functions: [], message: "已保存禁用函数"},
+    },
+  });
+  apps.nativePHPManagerDialog("php84", {params: {Version: "8.4.28"}}, {});
+  tab.onclick();
+  await new Promise(setImmediate);
+  const editor = control("#native-php-editor");
+  assert.equal(editor.value, "exec\nsystem");
+  editor.value = "";
+  const save = control("#native-php-save");
+  await save.onclick();
+  const request = calls.find((c) => c.url === base + "/php-disabled-functions-save");
+  assert.equal(request.options.body.content, "");
+  assert.equal(editor.value, "");
+});
+
 test("native PHP upgrade stays on the installed branch", async () => {
   const {apps, page, control, calls} = setup();
   apps.installNativePHPDialog(page, {key: "php83", params: {Version: "8.3.36", Minor: "8.3"}});

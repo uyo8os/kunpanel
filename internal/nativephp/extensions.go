@@ -14,8 +14,6 @@ import (
 	"time"
 
 	"golang.org/x/mod/semver"
-
-	"kunpanel/internal/util"
 )
 
 type Extension struct {
@@ -62,23 +60,9 @@ func parseManagedExtension(minor, filename string, contents []byte) (extensionRe
 	return release, string(contents) == extensionIni(minor, ext, release)
 }
 
-func readExtensionFile(filename string) ([]byte, error) {
-	st, err := os.Lstat(filename)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	if !st.Mode().IsRegular() {
-		return nil, fmt.Errorf("扩展文件不是普通文件: %s", filename)
-	}
-	return os.ReadFile(filename)
-}
-
 func managedExtension(minor, name string) (extensionRelease, []byte, error) {
 	filename := extensionIniPath(minor, name)
-	data, err := readExtensionFile(filename)
+	data, err := readRuntimeFile(filename)
 	if err != nil || data == nil {
 		return extensionRelease{}, data, err
 	}
@@ -179,19 +163,6 @@ func buildExtension(minor, prefix string, ext extensionSource, rel extensionRele
 	return data, nil
 }
 
-func writeExtensionFile(filename string, data []byte) error {
-	if data == nil {
-		if err := os.Remove(filename); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(filename), 0o755); err != nil {
-		return err
-	}
-	return util.AtomicWrite(filename, data, 0o644)
-}
-
 func rebuildManagedExtensions(minor, target string, w io.Writer) error {
 	for _, ext := range extensionSources {
 		rel, _, err := managedExtension(minor, ext.name)
@@ -205,7 +176,7 @@ func rebuildManagedExtensions(minor, target string, w io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if err := writeExtensionFile(extensionModulePath(target, ext.name, rel), module); err != nil {
+		if err := writeRuntimeFile(extensionModulePath(target, ext.name, rel), module); err != nil {
 			return err
 		}
 	}
@@ -262,10 +233,7 @@ func verifyExtensionModules(minor, removed string, checkConfig bool) error {
 		}
 	}
 	if checkConfig {
-		out, err := commandOutput(30*time.Second, FpmBinary(minor), "-t", "-y", ConfigPath(minor))
-		if err != nil {
-			return fmt.Errorf("PHP-FPM 配置检查失败: %s (%w)", strings.TrimSpace(out), err)
-		}
+		return checkFPMConfig(minor)
 	}
 	return nil
 }
@@ -336,7 +304,7 @@ func ManageExtension(minor, name string, remove bool, w io.Writer) error {
 			return err
 		}
 		newPath = extensionModulePath(Prefix(minor), name, release)
-		if err := writeExtensionFile(newPath, module); err != nil {
+		if err := writeRuntimeFile(newPath, module); err != nil {
 			return err
 		}
 		newIni = []byte(extensionIni(minor, ext, release))
@@ -344,14 +312,14 @@ func ManageExtension(minor, name string, remove bool, w io.Writer) error {
 	if err := activateExtension(minor, removed, ini, oldIni, newIni); err != nil {
 		if newPath != "" && newPath != oldPath {
 			// Keep the candidate if restoring the previous configuration failed.
-			if data, readErr := readExtensionFile(ini); readErr == nil && string(data) == string(oldIni) {
-				_ = writeExtensionFile(newPath, nil)
+			if data, readErr := readRuntimeFile(ini); readErr == nil && string(data) == string(oldIni) {
+				_ = writeRuntimeFile(newPath, nil)
 			}
 		}
 		return err
 	}
 	if oldPath != "" && oldPath != newPath {
-		if err := writeExtensionFile(oldPath, nil); err != nil {
+		if err := writeRuntimeFile(oldPath, nil); err != nil {
 			fmt.Fprintf(w, "旧扩展文件清理失败: %v\n", err)
 		}
 	}
@@ -363,35 +331,11 @@ func ManageExtension(minor, name string, remove bool, w io.Writer) error {
 	return nil
 }
 
-func activateExtension(minor, removed, ini string, oldIni, newIni []byte) (err error) {
+func activateExtension(minor, removed, ini string, oldIni, newIni []byte) error {
 	// Keep the previously loaded module on disk until this atomic INI change
 	// has been validated and the service has successfully accepted it.
-	if err := writeExtensionFile(ini, newIni); err != nil {
-		return err
-	}
-	restartAttempted := false
-	defer func() {
-		if err == nil {
-			return
-		}
-		if restoreErr := writeExtensionFile(ini, oldIni); restoreErr != nil {
-			err = fmt.Errorf("%v；恢复原扩展失败: %w", err, restoreErr)
-			return
-		}
-		if restartAttempted {
-			if restartErr := Action(minor, "restart"); restartErr != nil {
-				err = fmt.Errorf("%v；恢复 PHP-FPM 失败: %w", err, restartErr)
-				return
-			}
-		}
-		err = fmt.Errorf("已恢复原扩展配置: %w", err)
-	}()
-	if err := verifyExtensionModules(minor, removed, true); err != nil {
-		return err
-	}
-	if Status(minor) == "running" {
-		restartAttempted = true
-		return Action(minor, "restart")
-	}
-	return nil
+	_, err := activateRuntimeINI(minor, ini, oldIni, newIni, func() error {
+		return verifyExtensionModules(minor, removed, true)
+	})
+	return err
 }
