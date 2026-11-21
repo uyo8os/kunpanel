@@ -19,6 +19,7 @@ import (
 	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/nativephp"
+	"kunpanel/internal/nativepma"
 	"kunpanel/internal/util"
 )
 
@@ -906,6 +907,13 @@ func List() ([]Instance, error) {
 		}
 	}
 	for i := range list {
+		if list[i].Key == NativePMAKey && list[i].InstallMode == "native" {
+			list[i].Status = nativepma.Status()
+			if version := nativepma.Version(); list[i].Params != nil && version != "" {
+				list[i].Params["Version"] = version
+			}
+			continue
+		}
 		if IsMySQLKey(list[i].Key) && list[i].InstallMode == "native" {
 			refreshNativeMySQL(&list[i])
 			list[i].Status = nativemysql.Status()

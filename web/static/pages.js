@@ -2109,6 +2109,9 @@ PAGES.websites = {
 
 /* ================= 应用商店 ================= */
 PAGES.apps = {
+  isNativePMA(instance) {
+    return !!instance && instance.key === "phpmyadmin-native" && instance.install_mode === "native";
+  },
   isNativeMySQL(instance) {
     return !!instance && instance.install_mode === "native" && (instance.key === "mysql" || instance.key === "mysql-native");
   },
@@ -2176,6 +2179,7 @@ PAGES.apps = {
       if (!shown.length) html += '<div class="help" style="padding:30px;text-align:center;width:100%">没有匹配的应用</div>';
       shown.forEach(function(t, i) {
         var inst = t.key === "mysql" && instances.find(function(x) { return self.isNativeMySQL(x); });
+        if (t.key === "phpmyadmin") inst = instances.find(function(x) { return self.isNativePMA(x); });
         if (!inst) inst = instances.find(function(x) { return t.key === "php" ? /^php[0-9]*$/.test(x.key) : x.key === t.key; });
         // 新手推荐标识:建站三件套
         var rec = { php: "建站必装", mysql: "网站数据库", wordpress: "一键建站" }[t.key];
@@ -2198,6 +2202,9 @@ PAGES.apps = {
         } else if (t.key === "mysql" && inst && !self.isNativeMySQL(inst)) {
           html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
             '<button class="btn btn-sm btn-primary" data-install="mysql" data-mysql-side-by-side>安装原生版</button></span>';
+        } else if (t.key === "phpmyadmin" && inst && !self.isNativePMA(inst)) {
+          html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
+            '<button class="btn btn-sm btn-primary" data-install="phpmyadmin">安装原生版</button></span>';
         } else if (instMissing && inst.install_mode === "native") {
           html += '<span class="tag tag-danger" title="请在已安装列表检查原生应用">安装异常</span>';
         } else if (instMissing) {
@@ -2303,7 +2310,8 @@ PAGES.apps = {
           var nativeNginx = r.key === "nginx" && r.install_mode === "native";
           var nativePHP = /^php[0-9]*$/.test(r.key) && r.install_mode === "native";
           var nativeMySQL = self.isNativeMySQL(r);
-          var nativeApp = nativeNginx || nativePHP || nativeMySQL;
+          var nativePMA = self.isNativePMA(r);
+          var nativeApp = nativeNginx || nativePHP || nativeMySQL || nativePMA;
           var statusTag = r.status === "running"
             ? '<span class="tag tag-success"><span class="dot on"></span>运行中</span>'
             : (r.status === "missing"
@@ -2312,7 +2320,7 @@ PAGES.apps = {
           var ver = r.params && r.params.Version ? '<span class="tag tag-info" style="margin-left:6px">' + esc(r.params.Version) + '</span>' : "";
           html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeApp ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
           html += '<td>' + statusTag + '</td>';
-          var canManage = r.key === "nginx" || r.key === "openresty" ||
+          var canManage = nativePMA || r.key === "nginx" || r.key === "openresty" ||
             nativeMySQL || r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
             r.key === "python" || r.key === "nodejs" || r.key === "golang" ||
             /^php[0-9]*$/.test(r.key);
@@ -2363,6 +2371,11 @@ PAGES.apps = {
           var badge = body.querySelector('[data-upd-badge="' + r.key + '"]');
           if (!badge) return null;
           var base = /^php[0-9]*$/.test(r.key) ? "php" : r.key;
+          if (self.isNativePMA(r)) {
+            return api("/apps/phpmyadmin/versions").then(function(result) {
+              return { r: r, badge: badge, tags: result.version ? [result.version] : [], native: true };
+            }).catch(function() { return { r: r, badge: badge, tags: [], native: true }; });
+          }
           if (self.isNativeMySQL(r)) {
             return api("/apps/mysql/versions").then(function(list) {
               var branch = ((r.params && r.params.Version) || "").split(".").slice(0, 2).join(".");
@@ -2407,7 +2420,8 @@ PAGES.apps = {
               (function(inst, targetBadge, isPHP) {
                 var button = qs('[data-native-upgrade]', targetBadge);
                 button.onclick = function() {
-                  if (self.isNativeMySQL(inst)) self.installNativeMySQLDialog(el, inst);
+                  if (self.isNativePMA(inst)) self.installNativePMADialog(el, inst);
+                  else if (self.isNativeMySQL(inst)) self.installNativeMySQLDialog(el, inst);
                   else if (isPHP) self.installNativePHPDialog(el, inst);
                   else self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst);
                 };
@@ -2457,7 +2471,9 @@ PAGES.apps = {
               return;
             }
             var target = instances.find(function(x) { return x.key === key; });
-            var uninstallText = self.isNativeMySQL(target)
+            var uninstallText = self.isNativePMA(target)
+              ? "卸载原生 <b>phpMyAdmin</b>？卸载会关闭 HTTPS 入口，数据库与账号会保留。"
+              : self.isNativeMySQL(target)
               ? "卸载原生 <b>MySQL</b>？服务会停止，数据库文件、账号和配置会保留。"
               : target && target.install_mode === "native" && key === "nginx"
               ? "卸载原生 <b>Nginx</b>? 服务将停止,网站配置与数据会保留。"
@@ -2603,6 +2619,7 @@ PAGES.apps = {
     show("info");
   },
   appManagerDialog(key, instance, pageEl, template) {
+    if (this.isNativePMA(instance)) return this.nativePMAManagerDialog(instance, pageEl);
     if (this.isNativeMySQL(instance)) return this.nativeMySQLManagerDialog(instance, pageEl);
     if (/^php[0-9]*$/.test(key) && instance && instance.install_mode === "native") {
       return this.nativePHPManagerDialog(key, instance, pageEl);
@@ -3165,6 +3182,134 @@ PAGES.apps = {
       if (pel) PAGES.apps.render(pel);
     };
   },
+  async openNativePMA(database) {
+    var tab = window.open("about:blank", "_blank");
+    if (tab) tab.opener = null;
+    try {
+      var result = await api("/apps/instances/phpmyadmin-native/runtime/access", {method: "POST", body: {database: database || ""}});
+      if (tab) tab.location.replace(result.url);
+      else location.assign(result.url);
+    } catch (e) {
+      if (tab) tab.close();
+      toast(e.message || "无法打开 phpMyAdmin", "error", 6000);
+    }
+  },
+  nativePMAManagerDialog(instance, pageEl) {
+    var self = this;
+    var base = "/apps/instances/phpmyadmin-native/runtime";
+    var m = modal({
+      title: "应用管理 · phpMyAdmin", width: 560,
+      body: '<div id="pma-info">' + skeletonTable(3, 2) + '</div>',
+      footer: '<button class="btn btn-plain" data-act="close">关闭</button><button class="btn btn-primary" data-act="upgrade" disabled>检查版本 / 升级</button>'
+    });
+    var view = qs("#pma-info", m.el), upgrade = qs('[data-act="upgrade"]', m.el);
+    qs('[data-act="close"]', m.el).onclick = m.close;
+    upgrade.onclick = function() { m.close(); self.installNativePMADialog(pageEl, instance); };
+    api(base).then(function(result) {
+      var status = {running: "运行中", exited: "已停止", missing: "安装异常"}[result.status] || "未知";
+      view.innerHTML = '<div class="form-item"><label>版本与运行状态</label><div>phpMyAdmin ' + esc(result.version) + ' · PHP ' + esc(result.settings.php) + ' · ' + status + '</div></div>' +
+        '<div class="form-item"><label>HTTPS 地址</label><div class="mono" style="overflow-wrap:anywhere">' + esc(result.url) + '</div></div>' +
+        '<div class="form-item"><label>访问账号</label><div class="mono">' + esc(result.username) + '</div><div class="help">通过访问认证后，用数据库账号登录。</div></div>' +
+        (result.settings.self_signed ? '<div class="help" style="margin-bottom:12px">此入口使用自签名证书。</div>' : '') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        (result.status === "running" ? '<button class="btn btn-sm btn-primary" data-act="open">打开 phpMyAdmin</button>' : '') +
+        '<button class="btn btn-sm btn-plain" data-act="password">修改访问密码</button></div>';
+      var open = qs('[data-act="open"]', view);
+      if (open) open.onclick = function() { self.openNativePMA(); };
+      qs('[data-act="password"]', view).onclick = function() {
+        var pm = modal({title: "修改 phpMyAdmin 访问密码", width: 470,
+          body: '<div class="form-item required"><label for="pma-new-password">新密码</label><input class="input" id="pma-new-password" type="password" autocomplete="new-password" minlength="12" maxlength="72"></div>',
+          footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-primary" data-act="save">保存</button>'});
+        qs('[data-act="no"]', pm.el).onclick = pm.close;
+        qs('[data-act="save"]', pm.el).onclick = async function() {
+          var button = this;
+          var password = qs("#pma-new-password", pm.el).value;
+          if (password.length < 12) { toast("访问密码至少 12 位", "error"); return; }
+          button.disabled = true;
+          try {
+            await api(base + "/access-password", {method: "POST", body: {password: password}});
+            pm.close();
+            toast("访问密码已更新");
+          } catch (e) { toast(e.message, "error", 6000); }
+          finally { button.disabled = false; }
+        };
+      };
+      upgrade.disabled = result.status === "missing" || !result.version;
+    }).catch(function(e) { view.innerHTML = emptyState("warn", "加载失败", e.message); });
+  },
+  installNativePMADialog(el, instance) {
+    var self = this, upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version : "";
+    var m = modal({
+      title: upgrading ? "升级原生 phpMyAdmin" : "安装原生 phpMyAdmin", width: 560,
+      body: '<div class="form-item"><label>官方正式版</label><div class="mono" id="pma-official-version">正在获取…</div><div class="help" id="pma-install-help"></div></div>' +
+        (upgrading ? '<div class="help">当前版本 ' + esc(current || "-") + '。升级会短暂重启 phpMyAdmin 的 PHP-FPM 服务。</div>' :
+          '<div class="form-item required"><label for="pma-php">原生 PHP 版本</label><select class="select" id="pma-php" disabled></select></div>' +
+          '<div class="form-item required"><label for="pma-host">访问域名或 IP</label><input class="input" id="pma-host" value="' + esc(location.hostname.replace(/^\[|\]$/g, "")) + '"></div>' +
+          '<div class="form-item required"><label for="pma-port">HTTPS 端口</label><input class="input" id="pma-port" type="number" min="1" max="65535" value="8082"><div class="help">优先使用匹配的面板证书，否则生成自签名证书。</div></div>' +
+          '<div class="form-item required"><label for="pma-password">访问密码</label><input class="input" id="pma-password" type="password" autocomplete="new-password" minlength="12" maxlength="72" placeholder="至少 12 位"><div class="help">访问用户名为 phpmyadmin。随后使用 MySQL 或 MariaDB 账号登录。</div></div>'),
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? '开始升级' : '开始安装') + '</button>'
+    });
+    var version = "", ready = false;
+    var label = qs("#pma-official-version", m.el), help = qs("#pma-install-help", m.el);
+    var retry = qs('[data-act="retry"]', m.el), submit = qs('[data-act="yes"]', m.el);
+    async function load() {
+      retry.disabled = submit.disabled = true;
+      help.textContent = "";
+      label.textContent = "正在获取…";
+      try {
+        var results = await Promise.all([api("/apps/phpmyadmin/versions"), upgrading ? [] : api("/apps/instances")]);
+        version = results[0].version;
+        label.textContent = version || "暂不可用";
+        ready = !!version && (!upgrading || self.isNewerVersion(version, current));
+        if (upgrading && !ready) help.textContent = "已是当前官方正式版。";
+        if (!upgrading) {
+          var select = qs("#pma-php", m.el);
+          var runtimes = results[1].filter(function(r) { return /^php[0-9]+$/.test(r.key) && r.install_mode === "native" && r.params.Minor && r.status !== "missing"; });
+          runtimes.sort(function(a, b) { return a.params.Minor.localeCompare(b.params.Minor, undefined, {numeric: true}); });
+          select.innerHTML = runtimes.map(function(r) { return '<option value="' + esc(r.params.Minor) + '">PHP ' + esc(r.params.Version) + '</option>'; }).join("");
+          select.disabled = !runtimes.length;
+          var nginx = results[1].some(function(r) { return r.key === "nginx" && r.install_mode === "native" && r.status === "running"; });
+          if (!runtimes.length || !nginx) {
+            help.textContent = "请先安装原生 PHP 和原生 Nginx，并启动 Nginx。";
+            ready = false;
+          }
+          var port = qs("#pma-port", m.el);
+          if (port.value === "8082" && results[1].some(function(r) { return r.key === "phpmyadmin" && ((r.params && r.params.Port) || "8082") === "8082"; })) port.value = "8083";
+        }
+        submit.disabled = !ready;
+      } catch (e) { label.textContent = "版本获取失败"; help.textContent = e.message; }
+      finally { retry.disabled = false; }
+    }
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    retry.onclick = load;
+    submit.onclick = async function() {
+      if (!ready || submit.disabled) return;
+      var params = {Version: version};
+      if (upgrading) params.UpgradeKey = instance.key;
+      else {
+        params.PHP = qs("#pma-php", m.el).value;
+        params.Host = qs("#pma-host", m.el).value.trim();
+        var port = qs("#pma-port", m.el);
+        params.Port = port.value;
+        params.AccessPassword = qs("#pma-password", m.el).value;
+        if (!params.Host || !port.value || !port.checkValidity() || params.AccessPassword.length < 12) {
+          toast("请填写访问地址、有效端口和至少 12 位的访问密码", "error");
+          return;
+        }
+      }
+      retry.disabled = submit.disabled = true;
+      try {
+        var task = await api("/apps/install", {method: "POST", body: {key: "phpmyadmin", params: params}});
+        m.close();
+        taskModal(task.id, function() { self.render(el); });
+      } catch (e) {
+        retry.disabled = submit.disabled = false;
+        toast(e.message, "error", 6000);
+      }
+    };
+    load();
+  },
   nativeMySQLManagerDialog(instance, pageEl) {
     var self = this;
     var m = modal({
@@ -3371,6 +3516,7 @@ PAGES.apps = {
     if (t.key === "nginx") return this.installNativeNginxDialog(el, t);
     if (t.key === "php") return this.installNativePHPDialog(el);
     if (t.key === "mysql") return this.installNativeMySQLDialog(el);
+    if (t.key === "phpmyadmin") return this.installNativePMADialog(el);
     var paramsHTML = (t.params || []).map(function(p) {
       var field;
       if (p.type === "select") {
@@ -3476,10 +3622,11 @@ PAGES.databases = {
       this.tab = { key: running[0].key, database: "", table: "" };
     }
     // phpMyAdmin 快捷入口(应用商店已安装且运行时显示真实访问地址)
-    var pma = null;
+    var pma = null, nativePMA = false;
     try {
       const appInsts = (await api("/apps/instances").catch(function() { return []; })) || [];
-      const pmaInst = appInsts.filter(function(i) { return i.key === "phpmyadmin" && i.running; })[0];
+      nativePMA = appInsts.some(function(i) { return PAGES.apps.isNativePMA(i) && i.status === "running"; });
+      const pmaInst = appInsts.find(function(i) { return i.key === "phpmyadmin" && i.status === "running"; });
       if (pmaInst) pma = { url: "http://" + location.hostname + ":" + (pmaInst.params && pmaInst.params.Port || "8082") + "/", label: "phpMyAdmin" };
     } catch (e) {}
 
@@ -3493,7 +3640,8 @@ PAGES.databases = {
       (isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-users">' + I("key") + " 用户管理</button>" : "") +
       (isMySQLLike && !activeDB.native ? '<button class="btn btn-sm btn-plain" id="db-repl">' + I("refresh") + " 主从同步</button>" : "") +
       '<button class="btn btn-sm btn-plain" id="db-rootpwd">' + I("key") + " root 密码</button>" +
-      (pma && !activeDB.native ? '<a class="btn btn-sm btn-plain" href="' + esc(pma.url) + '" target="_blank">' + I("external") + " " + esc(pma.label) + "</a>" : "") +
+      (nativePMA && isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-pma">' + I("external") + ' phpMyAdmin</button>' :
+        pma && !activeDB.native && isMySQLLike ? '<a class="btn btn-sm btn-plain" href="' + esc(pma.url) + '" target="_blank" rel="noopener">' + I("external") + " " + esc(pma.label) + "</a>" : "") +
       '<button class="btn btn-sm btn-plain" id="db-refresh" title="刷新">' + I("refresh") + "</button></div></div>";
     // 实例切换 chips(多个数据库服务同时运行时)
     var instBar = "";
@@ -3517,6 +3665,8 @@ PAGES.databases = {
     if (usersBtn) usersBtn.onclick = function() { self.userMgr(); };
     var replBtn = qs("#db-repl", el);
     if (replBtn) replBtn.onclick = function() { self.replMgr(); };
+    var pmaBtn = qs("#db-pma", el);
+    if (pmaBtn) pmaBtn.onclick = function() { PAGES.apps.openNativePMA(activeDB.key); };
     qs("#db-rootpwd", el).onclick = function() {
       var instName = typeNames[self.tab.key] || self.tab.key;
       var pm = modal({

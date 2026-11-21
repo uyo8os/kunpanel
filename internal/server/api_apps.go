@@ -27,6 +27,10 @@ func (s *Server) handleAppTemplates(w http.ResponseWriter, r *http.Request) {
 		list = []appstore.Template{}
 	}
 	for i := range list {
+		if list[i].Key == "phpmyadmin" {
+			list[i].Desc = "原生 Web 数据库管理，连接面板安装的 MySQL 和 MariaDB"
+			list[i].Version, list[i].Params = "官方版本", nil
+		}
 		if list[i].Key == "mysql" {
 			list[i].Desc = "安装 MySQL 官方 Linux 二进制发行版，支持 5.7、8.0、8.4 LTS 和 9.7 LTS"
 			list[i].Version, list[i].Params = "官方版本", nil
@@ -79,6 +83,10 @@ func (s *Server) handleAppInstall(w http.ResponseWriter, r *http.Request) {
 		s.installNativeMySQL(w, req.Params)
 		return
 	}
+	if req.Key == "phpmyadmin" {
+		s.installNativePMA(w, req.Params)
+		return
+	}
 	if cliOK, _ := dockerx.Installed(); !cliOK {
 		Fail(w, http.StatusBadRequest, "未检测到 Docker,请先在【容器】页面一键安装")
 		return
@@ -119,6 +127,10 @@ func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
 		RemoveData bool `json:"remove_data"`
 	}
 	_ = readJSON(r, &req)
+	if key == appstore.NativePMAKey {
+		s.nativePMAAction(w, action)
+		return
+	}
 	if _, native := appstore.NativeMySQLInstance(key); native {
 		s.nativeMySQLAction(w, key, action)
 		return
@@ -251,6 +263,14 @@ func isPHPRuntimeKey(key string) bool {
 // handleAppRuntimeInfo 运行时信息:版本号(PHP/php-fpm/nginx/openresty -v)、PHP 已加载扩展
 func (s *Server) handleAppRuntimeInfo(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if key == appstore.NativePMAKey {
+		if _, ok := appstore.NativePMAInstance(); !ok {
+			Fail(w, http.StatusNotFound, "原生 phpMyAdmin 未安装")
+			return
+		}
+		s.nativePMAInfo(w)
+		return
+	}
 	if inst, ok := appstore.NativeMySQLInstance(key); ok {
 		OK(w, map[string]any{"key": key, "version": inst.Params["Version"], "port": inst.Params["Port"], "socket": nativemysql.Socket(), "status": nativemysql.Status(), "install_mode": "native"})
 		return
@@ -405,6 +425,21 @@ func gatewayErrorLog(key string) string {
 
 func (s *Server) handleAppRuntimeAction(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if key == appstore.NativePMAKey {
+		if _, ok := appstore.NativePMAInstance(); !ok {
+			Fail(w, http.StatusNotFound, "原生 phpMyAdmin 未安装")
+			return
+		}
+		switch r.PathValue("action") {
+		case "access":
+			s.nativePMAAccess(w, r)
+		case "access-password":
+			s.nativePMAAccessPassword(w, r)
+		default:
+			Fail(w, http.StatusBadRequest, "不支持的 phpMyAdmin 操作")
+		}
+		return
+	}
 	if _, ok := appstore.NativeMySQLInstance(key); ok {
 		Fail(w, http.StatusBadRequest, "该操作不适用于原生 MySQL")
 		return

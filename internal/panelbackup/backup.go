@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"kunpanel/internal/config"
+	"kunpanel/internal/nativepma"
 	"kunpanel/internal/util"
 )
 
@@ -37,7 +38,7 @@ func Build() (string, error) {
 	}
 	if entries, err := os.ReadDir(filepath.Join(dir, "websites", "conf.d")); err == nil {
 		for _, e := range entries {
-			if !e.IsDir() {
+			if !e.IsDir() && e.Name() != nativepma.NginxConfigName {
 				files["websites/conf.d/"+e.Name()] = filepath.Join(dir, "websites", "conf.d", e.Name())
 			}
 		}

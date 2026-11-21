@@ -68,6 +68,12 @@ bash kp-install.sh --uninstall              # 卸载
 
 数据库页支持建库、SQL、用户授权和 `.sql.gz` 备份恢复。已有 Docker MySQL 的服务器可另装原生版，原生版默认建议用 3308 端口。迁移时先为各业务库导出备份、在原生版建库并导入，再创建应用账号并修改连接端口。原生版仅监听本机 TCP，面板通过 Unix Socket 管理数据库。同分支升级会暂时停止服务并保留旧版数据副本，卸载会保留数据库文件和配置。
 
+### 原生 phpMyAdmin
+
+已安装原生 Nginx 和 PHP 后，可在应用商店安装 phpMyAdmin。面板从官方下载安装包，验证发布签名，并为 phpMyAdmin 启动独立的 PHP-FPM 服务。可从应用管理或数据库页打开，连接面板管理的 MySQL 和 MariaDB。
+
+安装时设置独立的 HTTPS 端口和访问密码。浏览器先用 `phpmyadmin` 和访问密码通过入口认证，再用数据库账号登录。面板证书覆盖所填访问域名或 IP 时会复用该证书，否则生成自签名证书。已有容器版可与原生版并行。
+
 ### Windows
 
 下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,

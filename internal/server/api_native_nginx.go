@@ -88,6 +88,9 @@ func (s *Server) nativeNginxAction(w http.ResponseWriter, action string) {
 			if _, ok := appstore.NativeNginxInstance(); !ok {
 				return fmt.Errorf("原生 Nginx 安装记录不存在")
 			}
+			if _, ok := appstore.NativePMAInstance(); ok {
+				return fmt.Errorf("原生 phpMyAdmin 正在使用 Nginx，请先卸载 phpMyAdmin")
+			}
 			if err := nativenginx.Uninstall(w); err != nil {
 				return err
 			}

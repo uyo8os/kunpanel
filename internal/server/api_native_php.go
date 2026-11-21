@@ -9,6 +9,7 @@ import (
 
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/nativephp"
+	"kunpanel/internal/nativepma"
 	"kunpanel/internal/taskx"
 	"kunpanel/internal/websites"
 )
@@ -67,6 +68,11 @@ func (s *Server) installNativePHP(w http.ResponseWriter, params map[string]strin
 			if err := appstore.UpdateNativePHPVersion(key, version); err != nil {
 				return fmt.Errorf("PHP 已升级，但更新应用记录失败: %w", err)
 			}
+			if pma, ok := appstore.NativePMAInstance(); ok && pma.Params["PHP"] == minor {
+				if err := nativepma.RestartPHP(minor); err != nil {
+					return fmt.Errorf("PHP 已升级，phpMyAdmin 的 PHP-FPM 重启失败: %w", err)
+				}
+			}
 			return nil
 		}
 		if err := appstore.RegisterNativePHP(minor, version); err != nil {
@@ -87,6 +93,10 @@ func (s *Server) installNativePHP(w http.ResponseWriter, params map[string]strin
 func (s *Server) nativePHPAction(w http.ResponseWriter, inst appstore.Instance, action string) {
 	key, minor := inst.Key, inst.Params["Minor"]
 	if action == "uninstall" {
+		if pma, ok := appstore.NativePMAInstance(); ok && pma.Params["PHP"] == minor {
+			Fail(w, http.StatusConflict, "原生 phpMyAdmin 正在使用该 PHP 版本")
+			return
+		}
 		if using := websites.PHPSitesUsing(key); len(using) > 0 {
 			Fail(w, http.StatusConflict, fmt.Sprintf("有 %d 个站点正在使用该 PHP 版本，请先切换版本", len(using)))
 			return
@@ -96,6 +106,9 @@ func (s *Server) nativePHPAction(w http.ResponseWriter, inst appstore.Instance, 
 			defer unlock()
 			if _, ok := appstore.NativePHPInstance(key); !ok {
 				return fmt.Errorf("原生 PHP 实例不存在")
+			}
+			if pma, ok := appstore.NativePMAInstance(); ok && pma.Params["PHP"] == minor {
+				return fmt.Errorf("原生 phpMyAdmin 正在使用该 PHP 版本")
 			}
 			if using := websites.PHPSitesUsing(key); len(using) > 0 {
 				return fmt.Errorf("该 PHP 版本正在被站点使用")

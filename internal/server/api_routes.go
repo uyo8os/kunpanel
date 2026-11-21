@@ -62,6 +62,7 @@ func (s *Server) registerAPI() {
 	m.Handle("GET /api/v1/apps/nginx/versions", wrap(http.HandlerFunc(s.handleNativeNginxVersions)))
 	m.Handle("GET /api/v1/apps/mysql/versions", wrap(http.HandlerFunc(s.handleNativeMySQLVersions)))
 	m.Handle("GET /api/v1/apps/php/versions", wrap(http.HandlerFunc(s.handleNativePHPVersions)))
+	m.Handle("GET /api/v1/apps/phpmyadmin/versions", wrap(http.HandlerFunc(s.handleNativePMAVersion)))
 	m.Handle("GET /api/v1/apps/instances/{key}/runtime", wrap(http.HandlerFunc(s.handleAppRuntimeInfo)))
 	m.Handle("POST /api/v1/apps/instances/{key}/runtime/{action}", wrap(http.HandlerFunc(s.handleAppRuntimeAction)))
 	m.Handle("GET /api/v1/apps/instances", wrap(http.HandlerFunc(s.handleAppInstances)))
