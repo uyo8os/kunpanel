@@ -52,7 +52,7 @@ bash kp-install.sh --uninstall              # 卸载
 
 在「应用商店」选择 Nginx，可从官方 Stable 或 Mainline 获取当前版本，下载源码并编译为面板管理的原生服务。该功能目前支持 Linux systemd，需 root 权限及可访问 Nginx 官方站点；编译依赖缺失时会通过系统软件源安装。安装、版本切换和卸载会保留网站数据及配置。
 
-原生 Nginx 不使用面板内置 WAF。已有 Nginx、网关容器、端口占用或旧容器/WAF 配置时，请先检查并处理，再安装原生版本；其他应用仍使用各自现有的安装方式。
+原生 Nginx 不使用面板内置 WAF。已有 Nginx、网关容器、端口占用或旧容器/WAF 配置时，请先检查并处理，再安装原生版本。
 
 ### 原生 PHP
 
@@ -61,6 +61,12 @@ bash kp-install.sh --uninstall              # 卸载
 在「应用商店 → 已安装 → PHP → 管理 → 扩展」可以安装、更新或卸载 Redis、APCu、Imagick、igbinary、MessagePack 和 Xdebug。面板从各扩展的上游正式版本编译，兼容性由扩展上游决定。同分支 PHP 升级时会先为新版本重编已安装的扩展。
 
 在原生 PHP 的「管理 → 禁用函数」中，可为该 PHP 版本设置 `disable_functions`。用逗号或换行分隔函数名，清空后保存可解除列表里的限制。保存成功后，运行中的 PHP-FPM 会重启。
+
+### 原生 MySQL
+
+在「应用商店 → MySQL」选择 5.7、8.0、8.4 LTS 或 9.7 LTS。面板直接下载 MySQL 官方 Linux 二进制包并校验签名，由 systemd 管理服务。安装需 Linux systemd 和 root 权限。5.7 和 8.0 提供各自的最终版本（5.7 仅支持 x86-64），8.4 LTS 与 9.7 LTS 的更新从官方发布说明发现。
+
+数据库页支持建库、SQL、用户授权和 `.sql.gz` 备份恢复。已有 Docker MySQL 的服务器可另装原生版，原生版默认建议用 3308 端口。迁移时先为各业务库导出备份、在原生版建库并导入，再创建应用账号并修改连接端口。原生版仅监听本机 TCP，面板通过 Unix Socket 管理数据库。同分支升级会暂时停止服务并保留旧版数据副本，卸载会保留数据库文件和配置。
 
 ### Windows
 

@@ -13,6 +13,7 @@ import (
 
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/taskx"
 	"kunpanel/internal/util"
@@ -26,6 +27,10 @@ func (s *Server) handleAppTemplates(w http.ResponseWriter, r *http.Request) {
 		list = []appstore.Template{}
 	}
 	for i := range list {
+		if list[i].Key == "mysql" {
+			list[i].Desc = "安装 MySQL 官方 Linux 二进制发行版，支持 5.7、8.0、8.4 LTS 和 9.7 LTS"
+			list[i].Version, list[i].Params = "官方版本", nil
+		}
 		if list[i].Key == "php" {
 			list[i].Desc = "从 PHP 官方源码编译的原生 PHP-FPM，支持多个版本共存"
 			list[i].Version = "官方版本"
@@ -70,6 +75,10 @@ func (s *Server) handleAppInstall(w http.ResponseWriter, r *http.Request) {
 		s.installNativePHP(w, req.Params)
 		return
 	}
+	if req.Key == "mysql" {
+		s.installNativeMySQL(w, req.Params)
+		return
+	}
 	if cliOK, _ := dockerx.Installed(); !cliOK {
 		Fail(w, http.StatusBadRequest, "未检测到 Docker,请先在【容器】页面一键安装")
 		return
@@ -110,6 +119,10 @@ func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
 		RemoveData bool `json:"remove_data"`
 	}
 	_ = readJSON(r, &req)
+	if _, native := appstore.NativeMySQLInstance(key); native {
+		s.nativeMySQLAction(w, key, action)
+		return
+	}
 	if key == "nginx" {
 		if _, ok := appstore.NativeNginxInstance(); ok {
 			s.nativeNginxAction(w, action)
@@ -238,6 +251,10 @@ func isPHPRuntimeKey(key string) bool {
 // handleAppRuntimeInfo 运行时信息:版本号(PHP/php-fpm/nginx/openresty -v)、PHP 已加载扩展
 func (s *Server) handleAppRuntimeInfo(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if inst, ok := appstore.NativeMySQLInstance(key); ok {
+		OK(w, map[string]any{"key": key, "version": inst.Params["Version"], "port": inst.Params["Port"], "socket": nativemysql.Socket(), "status": nativemysql.Status(), "install_mode": "native"})
+		return
+	}
 	if isPHPRuntimeKey(key) {
 		if inst, ok := appstore.NativePHPInstance(key); ok {
 			s.nativePHPInfo(w, inst)
@@ -388,6 +405,10 @@ func gatewayErrorLog(key string) string {
 
 func (s *Server) handleAppRuntimeAction(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if _, ok := appstore.NativeMySQLInstance(key); ok {
+		Fail(w, http.StatusBadRequest, "该操作不适用于原生 MySQL")
+		return
+	}
 	action := r.PathValue("action")
 	if action == "" {
 		action = r.URL.Query().Get("action")

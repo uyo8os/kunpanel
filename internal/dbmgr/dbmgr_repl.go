@@ -242,6 +242,9 @@ type ReplSetupOpts struct {
 
 // ReplSetup 主从配置任务体
 func ReplSetup(opts ReplSetupOpts, w io.Writer) error {
+	if isNativeMySQL(opts.Key) {
+		return fmt.Errorf("原生 MySQL 暂未接入面板主从同步")
+	}
 	if !dbUserSupported(opts.Key) {
 		return fmt.Errorf("仅 MySQL/MariaDB 支持主从同步")
 	}

@@ -16,6 +16,7 @@ import (
 
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/nativenginx"
 	"kunpanel/internal/nativephp"
 	"kunpanel/internal/util"
@@ -891,14 +892,25 @@ func renderComposeFor(key string, tpl Template, params map[string]string) string
 // List 已安装实例列表(带实时容器状态)
 func List() ([]Instance, error) {
 	list := loadInstances()
-	cliOK, _ := dockerx.Installed()
 	// 一次 docker ps 批量取全部容器状态(此前逐实例起子进程,引擎繁忙时列表被拖到秒级以上)
 	// 三态:running / exited / missing(记录存在但容器已被删除,如手动 docker rm)
 	var states map[string]string
-	if cliOK && len(list) > 0 {
-		states = dockerx.ContainerStates()
+	var cliOK bool
+	for _, inst := range list {
+		if inst.InstallMode != "native" {
+			cliOK, _ = dockerx.Installed()
+			if cliOK {
+				states = dockerx.ContainerStates()
+			}
+			break
+		}
 	}
 	for i := range list {
+		if IsMySQLKey(list[i].Key) && list[i].InstallMode == "native" {
+			refreshNativeMySQL(&list[i])
+			list[i].Status = nativemysql.Status()
+			continue
+		}
 		if list[i].Key == "nginx" && list[i].InstallMode == "native" {
 			list[i].Status = nativenginx.Status()
 			continue
@@ -1267,6 +1279,9 @@ func InstanceDir(key string) string {
 
 // GetCompose 读取实例的 docker-compose.yml 内容
 func GetCompose(key string) (string, error) {
+	if _, native := NativeMySQLInstance(key); native {
+		return "", fmt.Errorf("原生 MySQL 由 systemd 管理")
+	}
 	if _, ok := instanceTemplate(templateKeyOf(key)); !ok {
 		return "", fmt.Errorf("未知应用: %s", key)
 	}
@@ -1279,6 +1294,9 @@ func GetCompose(key string) (string, error) {
 
 // SaveCompose 校验并保存编辑后的 compose,然后重建容器使其生效
 func SaveCompose(key, content string) error {
+	if _, native := NativeMySQLInstance(key); native {
+		return fmt.Errorf("原生 MySQL 由 systemd 管理")
+	}
 	if _, ok := instanceTemplate(templateKeyOf(key)); !ok {
 		return fmt.Errorf("未知应用: %s", key)
 	}

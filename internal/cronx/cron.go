@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"kunpanel/internal/alertx"
+	"kunpanel/internal/appstore"
 	"kunpanel/internal/config"
 	"kunpanel/internal/dbmgr"
 	"kunpanel/internal/dockerx"
@@ -271,8 +272,8 @@ func validateJob(j *Job) error {
 			j.Keep = 10
 		}
 	case "dbbackup":
-		if j.DBKey != "mysql" && j.DBKey != "mariadb" && j.DBKey != "postgresql" {
-			return fmt.Errorf("数据库备份需要选择 mysql / mariadb / postgresql")
+		if !appstore.IsMySQLKey(j.DBKey) && j.DBKey != "mariadb" && j.DBKey != "postgresql" {
+			return fmt.Errorf("请选择 MySQL、MariaDB 或 PostgreSQL 数据库实例")
 		}
 		if strings.TrimSpace(j.DBName) == "" {
 			return fmt.Errorf("数据库备份需要填写库名")
@@ -502,7 +503,7 @@ func doDBBackup(j Job) (string, error) {
 	}
 	// 保留最近 Keep 份(按同名前缀)
 	bd := filepath.Join(config.DataDir(), "backups", "db")
-	prefix := j.DBKey + "_" + j.DBName + "_"
+	prefix := dbmgr.BackupPrefix(j.DBKey, j.DBName)
 	if entries, e := os.ReadDir(bd); e == nil {
 		var mine []string
 		for _, e2 := range entries {

@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"kunpanel/internal/appstore"
 )
 
 // DBUser 数据库账号(用户@主机)
@@ -31,7 +33,7 @@ var systemDBUsers = map[string]bool{
 
 // dbUserSupported 用户管理仅 MySQL/MariaDB
 func dbUserSupported(key string) bool {
-	return key == "mysql" || key == "mariadb"
+	return appstore.IsMySQLKey(key) || key == "mariadb"
 }
 
 // ListUsers 账号列表(过滤系统内置账号)
@@ -127,6 +129,9 @@ func SetUserPassword(key, user, host, password string) error {
 	}
 	if err := validateUserHost(user, host); err != nil {
 		return err
+	}
+	if user == "root" && strings.EqualFold(host, "localhost") && isNativeMySQL(key) {
+		return ChangeRootPassword(key, password)
 	}
 	if err := validateUserPassword(password); err != nil {
 		return err

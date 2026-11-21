@@ -2109,6 +2109,19 @@ PAGES.websites = {
 
 /* ================= 应用商店 ================= */
 PAGES.apps = {
+  isNativeMySQL(instance) {
+    return !!instance && instance.install_mode === "native" && (instance.key === "mysql" || instance.key === "mysql-native");
+  },
+  isNewerVersion(latest, current) {
+    var valid = /^\d+\.\d+\.\d+(?:\.\d+)?$/;
+    if (!valid.test(latest) || !valid.test(current)) return false;
+    var left = latest.split(".").map(Number), right = current.split(".").map(Number);
+    for (var i = 0; i < Math.max(left.length, right.length); i++) {
+      var diff = (left[i] || 0) - (right[i] || 0);
+      if (diff !== 0) return diff > 0;
+    }
+    return false;
+  },
   title: "应用商店",
   tab: "store",
   keyword: "",
@@ -2162,7 +2175,8 @@ PAGES.apps = {
       html += '<div class="app-grid">';
       if (!shown.length) html += '<div class="help" style="padding:30px;text-align:center;width:100%">没有匹配的应用</div>';
       shown.forEach(function(t, i) {
-        var inst = instances.find(function(x) { return t.key === "php" ? /^php[0-9]*$/.test(x.key) : x.key === t.key; });
+        var inst = t.key === "mysql" && instances.find(function(x) { return self.isNativeMySQL(x); });
+        if (!inst) inst = instances.find(function(x) { return t.key === "php" ? /^php[0-9]*$/.test(x.key) : x.key === t.key; });
         // 新手推荐标识:建站三件套
         var rec = { php: "建站必装", mysql: "网站数据库", wordpress: "一键建站" }[t.key];
         html += '<div class="app-card" style="animation-delay:' + Math.min(i * 0.04, 0.4) + 's">';
@@ -2181,8 +2195,11 @@ PAGES.apps = {
         } else if (phpMulti) {
           html += '<span style="display:flex;gap:6px;align-items:center">' + (instMissing ? '<span class="tag tag-danger">安装异常</span>' : '<span class="tag tag-success">已安装</span>') +
             '<button class="btn btn-sm btn-primary" data-install="php" title="可共存不同版本">装其他版本</button></span>';
+        } else if (t.key === "mysql" && inst && !self.isNativeMySQL(inst)) {
+          html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
+            '<button class="btn btn-sm btn-primary" data-install="mysql" data-mysql-side-by-side>安装原生版</button></span>';
         } else if (instMissing && inst.install_mode === "native") {
-          html += '<span class="tag tag-danger" title="原生 Nginx 文件或服务不存在,请在已安装列表检查">安装异常</span>';
+          html += '<span class="tag tag-danger" title="请在已安装列表检查原生应用">安装异常</span>';
         } else if (instMissing) {
           html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-danger" title="安装记录还在,容器已不存在(可能被手动删除)">容器已删除</span>' +
             '<button class="btn btn-sm btn-primary" data-rebuild="' + t.key + '">重建</button></span>';
@@ -2224,7 +2241,8 @@ PAGES.apps = {
         b.onclick = function() {
           var tpl = null;
           templates.forEach(function(t) { if (t.key === b.getAttribute("data-install")) tpl = t; });
-          if (tpl) self.installDialog(el, tpl);
+          if (tpl && b.hasAttribute("data-mysql-side-by-side")) self.installNativeMySQLDialog(el, null, true);
+          else if (tpl) self.installDialog(el, tpl);
         };
       });
       body.querySelectorAll("[data-custom-del]").forEach(function(b) {
@@ -2284,7 +2302,8 @@ PAGES.apps = {
           var tpl = templates.find(function(x) { return x.key === r.key; }) || {};
           var nativeNginx = r.key === "nginx" && r.install_mode === "native";
           var nativePHP = /^php[0-9]*$/.test(r.key) && r.install_mode === "native";
-          var nativeApp = nativeNginx || nativePHP;
+          var nativeMySQL = self.isNativeMySQL(r);
+          var nativeApp = nativeNginx || nativePHP || nativeMySQL;
           var statusTag = r.status === "running"
             ? '<span class="tag tag-success"><span class="dot on"></span>运行中</span>'
             : (r.status === "missing"
@@ -2294,7 +2313,7 @@ PAGES.apps = {
           html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeApp ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
           html += '<td>' + statusTag + '</td>';
           var canManage = r.key === "nginx" || r.key === "openresty" ||
-            r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
+            nativeMySQL || r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
             r.key === "python" || r.key === "nodejs" || r.key === "golang" ||
             /^php[0-9]*$/.test(r.key);
           html += '<td><div style="display:flex;gap:4px;flex-wrap:wrap">';
@@ -2344,6 +2363,13 @@ PAGES.apps = {
           var badge = body.querySelector('[data-upd-badge="' + r.key + '"]');
           if (!badge) return null;
           var base = /^php[0-9]*$/.test(r.key) ? "php" : r.key;
+          if (self.isNativeMySQL(r)) {
+            return api("/apps/mysql/versions").then(function(list) {
+              var branch = ((r.params && r.params.Version) || "").split(".").slice(0, 2).join(".");
+              var release = list.find(function(v) { return v.branch === branch && v.version; });
+              return { r: r, badge: badge, tags: release ? [release.version] : [], native: true };
+            }).catch(function() { return { r: r, badge: badge, tags: [], native: true }; });
+          }
           if (r.key === "nginx" && r.install_mode === "native") {
             return api("/apps/nginx/versions").then(function(v) {
               var channel = (r.params && r.params.Channel) || "stable";
@@ -2374,20 +2400,15 @@ PAGES.apps = {
           checked++;
           if (idx === 0) { badge.innerHTML = ""; continue; }
           if (results[i].native) {
-            var latest = tagsN[0], newer = false;
-            if (/^\d+\.\d+\.\d+$/.test(latest) && /^\d+\.\d+\.\d+$/.test(cur)) {
-              var lv = latest.split(".").map(Number), cv = cur.split(".").map(Number);
-              for (var n = 0; n < 3; n++) {
-                if (lv[n] !== cv[n]) { newer = lv[n] > cv[n]; break; }
-              }
-            }
+            var latest = tagsN[0], newer = self.isNewerVersion(latest, cur);
             if (newer) {
               upd++;
               badge.innerHTML = '<button class="btn btn-xs btn-plain" data-native-upgrade>发现新版本 → ' + esc(latest) + '</button>';
               (function(inst, targetBadge, isPHP) {
                 var button = qs('[data-native-upgrade]', targetBadge);
                 button.onclick = function() {
-                  if (isPHP) self.installNativePHPDialog(el, inst);
+                  if (self.isNativeMySQL(inst)) self.installNativeMySQLDialog(el, inst);
+                  else if (isPHP) self.installNativePHPDialog(el, inst);
                   else self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst);
                 };
               })(r, badge, results[i].nativePHP);
@@ -2436,7 +2457,9 @@ PAGES.apps = {
               return;
             }
             var target = instances.find(function(x) { return x.key === key; });
-            var uninstallText = target && target.install_mode === "native" && key === "nginx"
+            var uninstallText = self.isNativeMySQL(target)
+              ? "卸载原生 <b>MySQL</b>？服务会停止，数据库文件、账号和配置会保留。"
+              : target && target.install_mode === "native" && key === "nginx"
               ? "卸载原生 <b>Nginx</b>? 服务将停止,网站配置与数据会保留。"
               : target && target.install_mode === "native" && /^php[0-9]*$/.test(key)
               ? "卸载原生 <b>PHP</b>? 服务将停止，网站文件会保留；被网站使用的版本不可卸载。"
@@ -2580,6 +2603,7 @@ PAGES.apps = {
     show("info");
   },
   appManagerDialog(key, instance, pageEl, template) {
+    if (this.isNativeMySQL(instance)) return this.nativeMySQLManagerDialog(instance, pageEl);
     if (/^php[0-9]*$/.test(key) && instance && instance.install_mode === "native") {
       return this.nativePHPManagerDialog(key, instance, pageEl);
     }
@@ -3141,6 +3165,94 @@ PAGES.apps = {
       if (pel) PAGES.apps.render(pel);
     };
   },
+  nativeMySQLManagerDialog(instance, pageEl) {
+    var self = this;
+    var m = modal({
+      title: "应用管理 · MySQL", width: 560,
+      body: '<div id="native-mysql-info">' + skeletonTable(3, 2) + '</div>',
+      footer: '<button class="btn btn-plain" data-act="close">关闭</button><button class="btn btn-primary" data-act="upgrade" disabled>检查版本 / 升级</button>'
+    });
+    var view = qs("#native-mysql-info", m.el), upgrade = qs('[data-act="upgrade"]', m.el);
+    qs('[data-act="close"]', m.el).onclick = m.close;
+    upgrade.onclick = function() { m.close(); self.installNativeMySQLDialog(pageEl, instance); };
+    api("/apps/instances/" + encodeURIComponent(instance.key) + "/runtime").then(function(data) {
+      var status = { running: "运行中", exited: "已停止", missing: "安装异常" }[data.status] || "未知";
+      view.innerHTML = '<div class="form-item"><label>版本</label><div class="mono">' + esc(data.version || "-") + '</div></div>' +
+        '<div class="form-item"><label>状态</label><div>' + esc(status) + '</div></div>' +
+        '<div class="form-item"><label>本机连接地址</label><div class="mono">127.0.0.1:' + esc(data.port || "-") + '</div></div>' +
+        '<div class="form-item"><label>Unix Socket</label><div class="mono" style="overflow-wrap:anywhere">' + esc(data.socket || "-") + '</div></div>' +
+        (data.status === "running" ? '<a class="btn btn-sm btn-primary" href="#/databases" data-act="databases">数据库管理</a>' : '');
+      upgrade.disabled = data.status === "missing" || !data.version;
+      var dbLink = qs('[data-act="databases"]', view);
+      if (dbLink) dbLink.onclick = function() { PAGES.databases.tab = {key: instance.key}; m.close(); };
+    }).catch(function(e) { view.innerHTML = emptyState("warn", "加载失败", e.message); });
+  },
+  installNativeMySQLDialog(el, instance, sideBySide) {
+    var self = this, upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version || "" : "";
+    var branch = current.split(".").slice(0, 2).join(".");
+    var m = modal({
+      title: upgrading ? "升级原生 MySQL" : "安装原生 MySQL", width: 540,
+      body: '<div class="form-item required"><label for="native-mysql-version">官方版本</label><select class="select" id="native-mysql-version" disabled></select><div class="help" id="native-mysql-help"></div></div>' +
+        (upgrading ? '<div class="help">当前版本 ' + esc(current) + '。同一分支内升级会暂时停止服务，并保留旧版数据副本。</div>' :
+          '<div class="form-item required"><label for="native-mysql-port">本机端口</label><input class="input" id="native-mysql-port" type="number" min="1" max="65535" value="' + (sideBySide ? '3308' : '3306') + '"><div class="help">服务仅监听 127.0.0.1。</div></div>' +
+          '<div class="form-item required"><label for="native-mysql-password">root 密码</label><input class="input" id="native-mysql-password" type="password" autocomplete="new-password" placeholder="至少 6 位"><div class="help">恢复已保留的数据时，请使用该实例原来的密码。</div></div>' +
+          (sideBySide ? '<div class="help">安装后可在数据库页创建目标库，再导入容器版导出的 SQL 备份。</div>' : '')),
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新版本</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? '开始升级' : '开始安装') + '</button>'
+    });
+    var select = qs("#native-mysql-version", m.el), help = qs("#native-mysql-help", m.el);
+    var retry = qs('[data-act="retry"]', m.el), submit = qs('[data-act="yes"]', m.el);
+    var missing = [];
+    function updateSelection() {
+      submit.disabled = !select.value || (upgrading && !self.isNewerVersion(select.value, current));
+      help.textContent = !select.value ? "所选分支暂无可安装的官方版本。" :
+        upgrading && submit.disabled ? "当前分支没有更新版本。" : "安装时会校验 MySQL 官方签名。";
+      if (missing.length) help.textContent += " 以下分支暂不可用：" + missing.join("、") + "。";
+    }
+    async function load() {
+      retry.disabled = select.disabled = submit.disabled = true;
+      help.textContent = "正在获取官方版本…";
+      try {
+        var versions = (await api("/apps/mysql/versions")).filter(function(v) { return !upgrading || v.branch === branch; });
+        missing = versions.filter(function(v) { return !v.version; }).map(function(v) { return v.branch; });
+        var available = versions.filter(function(v) { return !!v.version; });
+        select.innerHTML = available.length ? available.map(function(v) {
+          return '<option value="' + esc(v.version) + '">' + esc(v.version) + (v.legacy ? '（已停止常规更新）' : '（LTS）') + '</option>';
+        }).join("") : '<option value="">无可用版本</option>';
+        select.disabled = !available.length;
+        updateSelection();
+      } catch (e) {
+        help.textContent = "获取官方版本失败：" + (e.message || "请检查服务器网络");
+      } finally { retry.disabled = false; }
+    }
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    retry.onclick = load;
+    select.onchange = updateSelection;
+    submit.onclick = async function() {
+      var params = {Version: select.value};
+      if (upgrading) params.UpgradeKey = instance.key;
+      else {
+        var port = qs("#native-mysql-port", m.el), password = qs("#native-mysql-password", m.el);
+        if (!port.value || !port.checkValidity() || password.value.length < 6) {
+          toast("请输入有效端口和至少 6 位的 root 密码", "error");
+          return;
+        }
+        params.Port = port.value;
+        params.RootPassword = password.value;
+      }
+      retry.disabled = select.disabled = submit.disabled = true;
+      try {
+        var task = await api("/apps/install", {method: "POST", body: {key: "mysql", params: params}});
+        m.close();
+        taskModal(task.id || task.task_id, function() { self.render(el); });
+      } catch (e) {
+        retry.disabled = select.disabled = false;
+        updateSelection();
+        toast(e.message || "无法启动 MySQL 任务", "error", 6000);
+      }
+    };
+    load();
+  },
   installNativePHPDialog(el, instance) {
     var self = this, upgrading = !!instance;
     var current = upgrading && instance.params ? instance.params.Version || "" : "";
@@ -3258,6 +3370,7 @@ PAGES.apps = {
   installDialog(el, t) {
     if (t.key === "nginx") return this.installNativeNginxDialog(el, t);
     if (t.key === "php") return this.installNativePHPDialog(el);
+    if (t.key === "mysql") return this.installNativeMySQLDialog(el);
     var paramsHTML = (t.params || []).map(function(p) {
       var field;
       if (p.type === "select") {
@@ -3329,7 +3442,7 @@ PAGES.databases = {
     catch (e) { el.innerHTML = emptyState("warn", "加载失败", e.message); return; }
     var running = instances.filter((i) => i.running);
     var notRunning = instances.filter((i) => !i.running);
-    var typeNames = { mysql: "MySQL", mariadb: "MariaDB", postgresql: "PostgreSQL" };
+    var typeNames = Object.fromEntries(instances.map(function(i) { return [i.key, i.native ? "原生 MySQL" : i.name]; }));
 
     var self = this;
     if (!running.length) {
@@ -3338,7 +3451,7 @@ PAGES.databases = {
       try {
         var appInsts0 = (await api("/apps/instances")) || [];
         var dbTypes = ["mysql", "mariadb", "postgresql"];
-        var m = appInsts0.filter(function(i) { return dbTypes.indexOf(i.key) >= 0 && i.status === "missing"; })[0];
+        var m = appInsts0.find(function(i) { return dbTypes.indexOf(i.key) >= 0 && i.status === "missing" && i.install_mode !== "native"; });
         if (m) missingDb = ({ mysql: "MySQL", mariadb: "MariaDB", postgresql: "PostgreSQL" })[m.key] || m.key;
       } catch (e) {}
       if (missingDb) {
@@ -3370,16 +3483,17 @@ PAGES.databases = {
       if (pmaInst) pma = { url: "http://" + location.hostname + ":" + (pmaInst.params && pmaInst.params.Port || "8082") + "/", label: "phpMyAdmin" };
     } catch (e) {}
 
-    var isMySQLLike = this.tab.key === "mysql" || this.tab.key === "mariadb";
+    var activeDB = running.find(function(i) { return i.key === self.tab.key; });
+    var isMySQLLike = activeDB.type === "mysql";
     var head = '<div class="waf-hero db-hero">' +
       '<div class="waf-hero-left">' + iconBox("database", 46) +
       '<div class="stat-meta"><h3>' + esc(typeNames[this.tab.key] || this.tab.key) + " " + stateTag(true, "运行中", "已停止") + "</h3>" +
       '<div class="stat-line db-stat-line">业务库 <b id="db-stat-dbs">-</b> 个 · 数据表 <b id="db-stat-tables">-</b> 张 · 备份 <b id="db-stat-baks">-</b> 份</div></div></div>' +
       '<div class="waf-hero-right">' +
-      (isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-users">' + I("key") + " 用户管理</button>" +
-      '<button class="btn btn-sm btn-plain" id="db-repl">' + I("refresh") + " 主从同步</button>" : "") +
+      (isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-users">' + I("key") + " 用户管理</button>" : "") +
+      (isMySQLLike && !activeDB.native ? '<button class="btn btn-sm btn-plain" id="db-repl">' + I("refresh") + " 主从同步</button>" : "") +
       '<button class="btn btn-sm btn-plain" id="db-rootpwd">' + I("key") + " root 密码</button>" +
-      (pma ? '<a class="btn btn-sm btn-plain" href="' + esc(pma.url) + '" target="_blank">' + I("external") + " " + esc(pma.label) + "</a>" : "") +
+      (pma && !activeDB.native ? '<a class="btn btn-sm btn-plain" href="' + esc(pma.url) + '" target="_blank">' + I("external") + " " + esc(pma.label) + "</a>" : "") +
       '<button class="btn btn-sm btn-plain" id="db-refresh" title="刷新">' + I("refresh") + "</button></div></div>";
     // 实例切换 chips(多个数据库服务同时运行时)
     var instBar = "";
@@ -3666,7 +3780,7 @@ PAGES.databases = {
     var wrap = qs("#db-table-wrap", el);
     if (!wrap) return;
     // 授权映射与库列表并行请求(互不依赖)
-    var dbmapP = (key === "mysql" || key === "mariadb")
+    var dbmapP = (key === "mysql" || key === "mysql-native" || key === "mariadb")
       ? api("/db/" + key + "/users/dbmap").catch(function() { return { rows: [] }; })
       : null;
     var dbs = [];
@@ -4039,6 +4153,17 @@ PAGES.cron = {
       footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">' + (isEdit ? "保存修改" : "创 建") + "</button>",
     });
     qs("#cr-type", m.el).value = job.type || "shell";
+    var dbKey = qs("#cr-dbkey", m.el);
+    if (job.db_key === "mysql-native") dbKey.add(new Option("原生 MySQL", "mysql-native"));
+    dbKey.value = job.db_key || "mysql";
+    api("/db/instances").then(function(list) {
+      for (var inst of list) {
+        if (!inst.native) continue;
+        var opt = Array.from(dbKey.options).find(function(o) { return o.value === inst.key; });
+        if (opt) opt.text = "原生 MySQL";
+        else dbKey.add(new Option("原生 MySQL", inst.key));
+      }
+    }).catch(function() {});
     // ---- 执行周期可视化选择 ----
     var WD = [["1", "周一"], ["2", "周二"], ["3", "周三"], ["4", "周四"], ["5", "周五"], ["6", "周六"], ["0", "周日"]];
     function pad2(n) { return (n < 10 ? "0" : "") + n; }

@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os/exec"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -20,6 +20,7 @@ import (
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
+	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/util"
 )
 
@@ -29,6 +30,7 @@ type Instance struct {
 	Name    string `json:"name"`
 	Type    string `json:"type"` // mysql / postgres
 	Running bool   `json:"running"`
+	Native  bool   `json:"native,omitempty"`
 	// Databases 该实例的业务库数量(排除系统库;未运行时为 0)。
 	// 概览 KPI 与数据库页 hero 用同一口径,30s 缓存,建/删库时主动失效
 	Databases int `json:"databases,omitempty"`
@@ -44,10 +46,18 @@ var supported = []Instance{
 func Instances() []Instance {
 	out := make([]Instance, len(supported))
 	copy(out, supported)
+	if isNativeMySQL(appstore.ParallelMySQLKey) {
+		out = append(out, Instance{Key: appstore.ParallelMySQLKey, Name: "原生 MySQL", Type: "mysql", Native: true})
+	}
+	out[0].Native = isNativeMySQL("mysql")
 	// 一次 docker ps 批量取状态(此前逐实例起子进程)
 	states := dockerx.ContainerStates()
 	for i := range out {
-		out[i].Running = states["kun-"+out[i].Key] == "running"
+		if out[i].Native {
+			out[i].Running = nativemysql.Status() == "running"
+		} else {
+			out[i].Running = states["kun-"+out[i].Key] == "running"
+		}
 		if out[i].Running {
 			out[i].Databases = businessDBCount(out[i].Key)
 		}
@@ -118,6 +128,17 @@ func passwordFor(key string) (string, error) {
 
 func backupsDir() string { return filepath.Join(config.DataDir(), "backups", "db") }
 
+func backupInstanceKey(key string) string {
+	if isNativeMySQL(key) {
+		return appstore.ParallelMySQLKey
+	}
+	return key
+}
+
+func BackupPrefix(key, database string) string {
+	return backupInstanceKey(key) + "_" + sanitize(database) + "_"
+}
+
 // clientArgs 组装容器内执行的命令
 func clientArgs(key, password, database, sql string) (env []string, cmd []string, err error) {
 	switch key {
@@ -154,6 +175,13 @@ func Query(key, database, sqlText string) (string, error) {
 	if strings.TrimSpace(sqlText) == "" {
 		return "", fmt.Errorf("SQL 不能为空")
 	}
+	if isNativeMySQL(key) {
+		out, truncated, err := nativeSQL(database, strings.NewReader(sqlText), time.Minute)
+		if truncated {
+			out += "\n... (结果过长已截断)"
+		}
+		return out, err
+	}
 	if !dockerx.ContainerRunning("kun-" + key) {
 		return "", fmt.Errorf("数据库容器未运行")
 	}
@@ -189,6 +217,20 @@ func TableQuery(key, database, sqlText string) (*TableResult, error) {
 	if !isSupported(key) {
 		return nil, fmt.Errorf("不支持的数据库")
 	}
+	if isNativeMySQL(key) {
+		out, truncated, err := nativeSQL(database, strings.NewReader(sqlText), time.Minute)
+		if err != nil {
+			return nil, err
+		}
+		if truncated {
+			i := strings.LastIndexByte(out, '\n')
+			if i < 0 {
+				return nil, fmt.Errorf("查询结果过长，请缩小范围")
+			}
+			out = out[:i+1]
+		}
+		return parseTable(out, mysqlBatchEscapes.Replace), nil
+	}
 	password, err := passwordFor(key)
 	if err != nil {
 		return nil, err
@@ -215,39 +257,45 @@ func TableQuery(key, database, sqlText string) (*TableResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s", strings.TrimSpace(out))
 	}
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) == 0 {
-		return &TableResult{Columns: []string{}, Rows: [][]interface{}{}}, nil
+	return parseTable(out, nil), nil
+}
+
+func parseTable(out string, unescape func(string) string) *TableResult {
+	if out == "" {
+		return &TableResult{Columns: []string{}, Rows: [][]interface{}{}}
 	}
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	cols := strings.Split(lines[0], "\t")
-	var rows [][]interface{}
+	if unescape != nil {
+		for i, column := range cols {
+			cols[i] = unescape(column)
+		}
+	}
+	rows := make([][]interface{}, 0, len(lines)-1)
 	for _, l := range lines[1:] {
-		if l == "" {
+		if l == "" && unescape == nil {
 			continue
 		}
 		vals := strings.Split(l, "\t")
 		row := make([]interface{}, len(cols))
-		for i, v := range vals {
-			if v == "NULL" {
-				row[i] = nil
-			} else {
+		for i, v := range vals[:min(len(vals), len(cols))] {
+			if v != "NULL" {
+				if unescape != nil {
+					v = unescape(v)
+				}
 				row[i] = v
 			}
 		}
-		// 补齐缺失列
-		for len(row) < len(cols) {
-			row = append(row, nil)
-		}
 		rows = append(rows, row)
 	}
-	return &TableResult{Columns: cols, Rows: rows}, nil
+	return &TableResult{Columns: cols, Rows: rows}
 }
 
 // Databases 列出数据库
 func Databases(key string) ([]string, error) {
 	var sql string
 	switch key {
-	case "mysql", "mariadb":
+	case "mysql", appstore.ParallelMySQLKey, "mariadb":
 		sql = "SHOW DATABASES"
 	case "postgresql":
 		sql = "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname"
@@ -336,6 +384,9 @@ func Backup(key, database string) (string, error) {
 	if !isSupported(key) || strings.TrimSpace(database) == "" {
 		return "", fmt.Errorf("参数错误")
 	}
+	if isNativeMySQL(key) {
+		return nativeMySQLBackup(key, database)
+	}
 	if !dockerx.ContainerRunning("kun-" + key) {
 		return "", fmt.Errorf("数据库容器未运行")
 	}
@@ -344,7 +395,7 @@ func Backup(key, database string) (string, error) {
 		return "", err
 	}
 	_ = os.MkdirAll(backupsDir(), 0o755)
-	file := filepath.Join(backupsDir(), fmt.Sprintf("%s_%s_%s.sql.gz", key, sanitize(database), time.Now().Format("20060102_150405")))
+	file := filepath.Join(backupsDir(), BackupPrefix(key, database)+time.Now().Format("20060102_150405")+".sql.gz")
 
 	var dumpCmd []string
 	switch key {
@@ -384,7 +435,7 @@ func Backup(key, database string) (string, error) {
 // ListBackups 某数据库实例的备份列表
 func ListBackups(key string) []BackupInfo {
 	dir := filepath.Join(backupsDir())
-	prefix := key + "_"
+	prefix := backupInstanceKey(key) + "_"
 	var out []BackupInfo
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
@@ -406,7 +457,7 @@ func BackupPath(key, file string) (string, error) {
 	if !isSupported(key) || strings.Contains(file, "/") || strings.Contains(file, "\\") || strings.Contains(file, "..") {
 		return "", fmt.Errorf("非法备份文件名")
 	}
-	if !strings.HasPrefix(file, key+"_") || !strings.HasSuffix(file, ".sql.gz") {
+	if !strings.HasPrefix(file, backupInstanceKey(key)+"_") || !strings.HasSuffix(file, ".sql.gz") {
 		return "", fmt.Errorf("非法备份文件名")
 	}
 	return filepath.Join(backupsDir(), file), nil
@@ -425,6 +476,9 @@ func DeleteBackup(key, file string) error {
 }
 
 func isSupported(key string) bool {
+	if key == appstore.ParallelMySQLKey {
+		return true
+	}
 	for _, s := range supported {
 		if s.Key == key {
 			return true
@@ -487,6 +541,9 @@ func ValidIdentifier(s string) bool {
 // 1. 用旧密码执行 ALTER USER(root@% 与 root@localhost)
 // 2. 同步更新面板实例记录,否则后续管理操作会因旧密码失败
 func ChangeRootPassword(key, newPassword string) error {
+	if isNativeMySQL(key) {
+		return nativemysql.ChangePassword(newPassword)
+	}
 	if !isSupported(key) || key == "postgresql" {
 		return fmt.Errorf("该数据库类型暂不支持修改 root 密码")
 	}
@@ -552,7 +609,8 @@ func Import(key, database, file string) (string, error) {
 	if !isSupported(key) || strings.TrimSpace(database) == "" {
 		return "", fmt.Errorf("参数错误")
 	}
-	if !dockerx.ContainerRunning("kun-" + key) {
+	native := isNativeMySQL(key)
+	if !native && !dockerx.ContainerRunning("kun-"+key) {
 		return "", fmt.Errorf("数据库容器未运行")
 	}
 	fi, err := os.Stat(file)
@@ -561,6 +619,13 @@ func Import(key, database, file string) (string, error) {
 	}
 	if fi.Size() == 0 {
 		return "", fmt.Errorf("SQL 文件为空")
+	}
+	if native {
+		if systemDBs[strings.ToLower(database)] {
+			return "", fmt.Errorf("系统库不可通过 SQL 备份恢复覆盖")
+		}
+		defer invalidateDBCount(key)
+		return nativeMySQLImport(database, file)
 	}
 	password, err := passwordFor(key)
 	if err != nil {
