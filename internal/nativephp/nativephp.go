@@ -178,12 +178,16 @@ func fetch(url string, limit int64) ([]byte, error) {
 }
 
 func fetchContext(ctx context.Context, url string, limit int64) ([]byte, error) {
+	return fetchWithClient(ctx, client, url, limit)
+}
+
+func fetchWithClient(ctx context.Context, hc *http.Client, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "kunpanel-native-php")
-	res, err := client.Do(req)
+	res, err := hc.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -263,6 +267,12 @@ func dependencies(w io.Writer) error {
 		return nil
 	}
 	fmt.Fprintln(w, "安装 PHP 编译所需工具和开发库（PHP 本体来自官方源码）...")
+	return installDevPackages(w,
+		[]string{"build-essential", "pkg-config", "ca-certificates", "tar", "libxml2-dev", "libssl-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "zlib1g-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libicu-dev", "libpq-dev", "libsqlite3-dev"},
+		[]string{"gcc", "gcc-c++", "make", "pkgconf-pkg-config", "ca-certificates", "tar", "libxml2-devel", "openssl-devel", "libcurl-devel", "oniguruma-devel", "libzip-devel", "zlib-devel", "libpng-devel", "libjpeg-turbo-devel", "freetype-devel", "libicu-devel", "postgresql-devel", "sqlite-devel"})
+}
+
+func installDevPackages(w io.Writer, deb, rpm []string) error {
 	var name string
 	var args []string
 	switch {
@@ -271,13 +281,13 @@ func dependencies(w io.Writer) error {
 			return err
 		}
 		name = "apt-get"
-		args = []string{"install", "-y", "--no-install-recommends", "build-essential", "pkg-config", "ca-certificates", "tar", "libxml2-dev", "libssl-dev", "libcurl4-openssl-dev", "libonig-dev", "libzip-dev", "zlib1g-dev", "libpng-dev", "libjpeg-dev", "libfreetype6-dev", "libicu-dev", "libpq-dev", "libsqlite3-dev"}
+		args = append([]string{"install", "-y", "--no-install-recommends"}, deb...)
 	case exists("dnf") || exists("yum"):
 		name = "dnf"
 		if !exists(name) {
 			name = "yum"
 		}
-		args = []string{"install", "-y", "gcc", "gcc-c++", "make", "pkgconf-pkg-config", "ca-certificates", "tar", "libxml2-devel", "openssl-devel", "libcurl-devel", "oniguruma-devel", "libzip-devel", "zlib-devel", "libpng-devel", "libjpeg-turbo-devel", "freetype-devel", "libicu-devel", "postgresql-devel", "sqlite-devel"}
+		args = append([]string{"install", "-y"}, rpm...)
 	default:
 		return fmt.Errorf("当前仅支持 Debian/Ubuntu、RHEL 系列自动准备 PHP 编译依赖")
 	}
@@ -388,6 +398,9 @@ func containsDynamicExtensions(m string) (bool, error) {
 			return false, err
 		}
 		if filepath.Base(p) == opcacheIniName && string(b) == opcacheIniContent {
+			continue
+		}
+		if _, ok := parseManagedExtension(m, p, b); ok {
 			continue
 		}
 		if extensionLine.Match(b) {
@@ -615,6 +628,9 @@ func Install(minor, version string, w io.Writer) error {
 	if err = run(w, 10*time.Minute, srcDir, "make", "install"); err != nil {
 		return err
 	}
+	if err = rebuildManagedExtensions(m, target, w); err != nil {
+		return fmt.Errorf("重编 PHP 扩展失败: %w", err)
+	}
 	if err = writeConfig(m, srcDir); err != nil {
 		return err
 	}
@@ -642,6 +658,9 @@ func Install(minor, version string, w io.Writer) error {
 	}
 	if err = validateModules(modules); err != nil {
 		return failed(fmt.Errorf("检查 PHP 扩展失败: %w\n%s", err, strings.TrimSpace(modules)))
+	}
+	if err = verifyManagedExtensions(m); err != nil {
+		return failed(err)
 	}
 	if err = run(w, 30*time.Second, "", FpmBinary(m), "-t", "-y", ConfigPath(m)); err != nil {
 		return failed(fmt.Errorf("PHP-FPM 配置校验失败: %w", err))

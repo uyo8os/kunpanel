@@ -56,7 +56,9 @@ bash kp-install.sh --uninstall              # 卸载
 
 ### 原生 PHP
 
-应用商店提供从 PHP 官方源码编译的 PHP-FPM 8.3、8.4、8.5 和 8.6；各版本独立运行，网站可选择对应版本。需 Linux systemd、root 权限及面板原生 Nginx。PHP 会编译常用官方扩展；Redis 等第三方扩展目前尚不支持在面板内安装。已有 PHP 容器仍可管理，旧网站不会自动切换到原生运行时。
+应用商店提供从 PHP 官方源码编译的 PHP-FPM 8.3、8.4、8.5 和 8.6。各版本独立运行，网站可选择对应版本。需 Linux systemd、root 权限及面板原生 Nginx。已有 PHP 容器和网站绑定继续可用。
+
+在「应用商店 → 已安装 → PHP → 管理 → 扩展」可以安装、更新或卸载 Redis、APCu、Imagick、igbinary、MessagePack 和 Xdebug。面板从各扩展的上游正式版本编译，兼容性由扩展上游决定。同分支 PHP 升级时会先为新版本重编已安装的扩展。
 
 ### Windows
 

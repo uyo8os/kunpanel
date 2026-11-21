@@ -2484,7 +2484,7 @@ PAGES.apps = {
     var self = this;
     var m = modal({
       title: "应用管理 · 原生 PHP", width: 780,
-      body: '<div class="hub-tabs" style="margin-bottom:14px"><div class="hub-tab active" data-native-php-tab="info">运行信息</div><div class="hub-tab" data-native-php-tab="ini">配置文件</div></div><div id="native-php-view"></div>',
+      body: '<div class="hub-tabs" style="margin-bottom:14px"><div class="hub-tab active" data-native-php-tab="info">运行信息</div><div class="hub-tab" data-native-php-tab="extensions">扩展</div><div class="hub-tab" data-native-php-tab="ini">配置文件</div></div><div id="native-php-view"></div>',
       footer: '<button class="btn btn-plain" data-act="close">关 闭</button><button class="btn btn-primary" data-act="upgrade">检查更新 / 升级</button>'
     });
     var view = qs("#native-php-view", m.el), currentTab = "info", original = null, sequence = 0;
@@ -2500,6 +2500,34 @@ PAGES.apps = {
       m.doClose();
       self.installNativePHPDialog(pageEl, instance);
     };
+    function renderExtensions(entries, base) {
+      view.innerHTML = '<div class="settings-section"><p class="help">面板从上游获取兼容当前 PHP 的正式版本。编译期间 PHP 继续运行，扩展变更成功后才重启运行中的服务。</p><div class="am-ext-grid">' +
+        entries.map(function(ext) {
+          var version = ext.version ? '<span class="tag tag-info">' + esc(ext.version) + '</span>' : '';
+          var buttons = ext.version ? '<button class="btn btn-xs btn-plain" data-ext="' + esc(ext.name) + '">更新</button> <button class="btn btn-xs btn-danger" data-ext="' + esc(ext.name) + '" data-remove>卸载</button>' :
+            ext.loaded ? '<span class="help">已由其他配置加载</span>' : '<button class="btn btn-xs btn-primary" data-ext="' + esc(ext.name) + '">安装</button>';
+          var minimum = ext.minimum ? '<div>当前 PHP 需要扩展版本 ' + esc(ext.minimum) + ' 或更高</div>' : '';
+          return '<div class="am-ext-card"><div class="am-ext-head"><b class="mono">' + esc(ext.name) + '</b>' + version +
+            '</div><div class="am-ext-desc">' + esc(ext.desc) + ' <a href="' + esc(ext.source) + '" target="_blank" rel="noopener noreferrer">源码</a>' + minimum + '</div><div>' + buttons + '</div></div>';
+        }).join("") + '</div></div>';
+      var submitting = false;
+      qsa("button[data-ext]", view).forEach(function(button) {
+        button.onclick = async function() {
+          if (submitting) return;
+          var name = button.getAttribute("data-ext"), remove = button.hasAttribute("data-remove");
+          submitting = true;
+          try {
+            if (remove && !(await confirmDlg("卸载 <b>" + esc(name) + "</b>？使用该扩展的站点可能受影响。", { danger: true }))) return;
+            var task = await api(base + (remove ? "/php-ext-remove" : "/php-ext"), { method: "POST", body: { ext: name } });
+            taskModal(task.task_id, function() { if (view.isConnected && currentTab === "extensions") show("extensions"); });
+          } catch (e) {
+            toast(e.message || "无法启动扩展任务", "error", 7000);
+          } finally {
+            submitting = false;
+          }
+        };
+      });
+    }
     async function show(tab) {
       if (tab !== currentTab && dirty() && !(await confirmDlg("配置有未保存的修改，确定放弃吗？", { danger: true }))) return;
       currentTab = tab; original = null;
@@ -2508,15 +2536,16 @@ PAGES.apps = {
       view.innerHTML = '<div class="boot-loading" style="height:60px"><div class="spinner"></div></div>';
       try {
         var base = "/apps/instances/" + encodeURIComponent(key) + "/runtime";
-        var d = tab === "info" ? await api(base) : await api(base + "/php-ini-get", { method: "POST", body: {} });
+        var d = tab === "info" ? await api(base) : await api(base + (tab === "extensions" ? "/php-ext-catalog" : "/php-ini-get"), { method: "POST", body: {} });
         if (seq !== sequence) return;
         if (tab === "info") {
           var extensions = Array.isArray(d.extensions) ? d.extensions : [];
           view.innerHTML = '<div class="am-info-row"><div class="am-info-label">安装方式</div><div class="am-info-val">原生 PHP-FPM</div></div>' +
             '<div class="am-info-row"><div class="am-info-label">版本</div><div class="mono am-info-val">' + esc(d.version || (instance.params && instance.params.Version) || "-") + '</div></div>' +
             '<div class="am-info-row"><div class="am-info-label">服务状态</div><div class="am-info-val">' + (d.status === "running" ? "运行中" : "未运行") + '</div></div>' +
-            '<div class="settings-section"><div class="settings-section-title">已加载扩展</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + extensions.map(function(x) { return '<span class="tag tag-info">' + esc(x) + '</span>'; }).join("") + '</div>' +
-            '<div class="help" style="margin-top:10px">显示当前版本已加载的扩展；暂不支持在此安装第三方扩展。</div></div>';
+            '<div class="settings-section"><div class="settings-section-title">已加载扩展</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + extensions.map(function(x) { return '<span class="tag tag-info">' + esc(x) + '</span>'; }).join("") + '</div></div>';
+        } else if (tab === "extensions") {
+          renderExtensions(d || [], base);
         } else {
           original = d.content || "";
           view.innerHTML = '<div class="settings-section"><div class="settings-section-title">php.ini 配置</div><textarea class="textarea mono" id="native-php-ini" rows="22" spellcheck="false">' + esc(original) + '</textarea>' +

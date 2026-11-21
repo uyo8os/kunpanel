@@ -60,6 +60,9 @@ func TestNativePHPIntegration(t *testing.T) {
 			t.Errorf("missing %s in %s", want, modules)
 		}
 	}
+	if names := os.Getenv("KP_NATIVE_PHP_E2E_EXTENSIONS"); names != "" {
+		testNativePHPExtensions(t, m, dir, strings.Split(names, ","))
+	}
 	script := filepath.Join(dir, "index.php")
 	if err = os.WriteFile(script, []byte(`<?php echo "kunpanel-php-fpm:" . PHP_VERSION;`), 0644); err != nil {
 		t.Fatal(err)
@@ -90,6 +93,38 @@ func TestNativePHPIntegration(t *testing.T) {
 	}
 	if _, err = os.Stat(IniPath(m)); err != nil {
 		t.Fatalf("config removed: %v", err)
+	}
+}
+
+func testNativePHPExtensions(t *testing.T, minor, dir string, names []string) {
+	t.Helper()
+	for _, name := range names {
+		if err := ManageExtension(minor, name, false, os.Stdout); err != nil {
+			t.Fatalf("install %s: %v", name, err)
+		}
+	}
+	script := filepath.Join(dir, "extensions.php")
+	if err := os.WriteFile(script, []byte(`<?php echo implode(',', get_loaded_extensions());`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, err := fpmRequest(Socket(minor), script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		if !strings.Contains(strings.ToLower(body), ","+name) {
+			t.Fatalf("FPM did not load %s: %s", name, body)
+		}
+	}
+	if err := ManageExtension(minor, names[0], false, os.Stdout); err != nil {
+		t.Fatalf("check update %s: %v", names[0], err)
+	}
+	if err := ManageExtension(minor, names[0], true, os.Stdout); err != nil {
+		t.Fatalf("remove %s: %v", names[0], err)
+	}
+	body, err = fpmRequest(Socket(minor), script)
+	if err != nil || strings.Contains(strings.ToLower(body), ","+names[0]) {
+		t.Fatalf("FPM still loads %s after removal: %s (%v)", names[0], body, err)
 	}
 }
 func fpmRecord(c net.Conn, typ byte, payload []byte) error {

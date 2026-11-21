@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 
-function setup(versionResponse) {
+function setup(versionResponse, ui = {}) {
   const source = fs.readFileSync(path.join(__dirname, "../static/pages.js"), "utf8");
   const start = source.indexOf("PAGES.apps = {");
   const end = source.indexOf("/* ================= 数据库", start);
@@ -22,10 +22,12 @@ function setup(versionResponse) {
   }
   const page = {};
   const ctx = vm.createContext({
-    PAGES: {}, esc: (s) => s, appIcon: () => "", modal: () => ({el: {}, close() {}}),
-    qs: (selector) => control(selector), toast() {}, taskModal() {},
+    PAGES: {}, esc: (s) => s, appIcon: () => "", modal: () => ({el: {}, close() {}, setVeto() {}}),
+    qs: (selector) => control(selector), qsa: (selector) => ui.groups?.[selector] || [],
+    toast() {}, taskModal: ui.taskModal || (() => {}),
     api: (url, options) => {
       calls.push({url, options});
+      if (ui.responses?.[url]) return Promise.resolve(ui.responses[url]);
       if (url === "/apps/php/versions") return typeof versionResponse === "function" ? versionResponse() : Promise.resolve(versionResponse || {"8.3":"8.3.37", "8.4":"8.4.28", "8.5":"8.5.13", "8.6":"8.6.0"});
       return Promise.resolve({id: "task"});
     },
@@ -46,6 +48,31 @@ test("native PHP installs the selected official patch release", async () => {
   const request = calls.find((c) => c.url === "/apps/install");
   assert.equal(request.options.body.key, "php");
   assert.equal(request.options.body.params.Version, "8.4.28");
+});
+
+test("native PHP extension install submits only the catalog name to the selected runtime", async () => {
+  const base = "/apps/instances/php84/runtime";
+  const tab = {getAttribute: () => "extensions", classList: {toggle() {}}};
+  const button = {getAttribute: () => "redis", hasAttribute: () => false};
+  let task;
+  const {apps, control, calls} = setup(undefined, {
+    groups: {"[data-native-php-tab]": [tab], "button[data-ext]": [button]},
+    responses: {
+      [base]: {version: "8.4.28", status: "running", extensions: ["gd"]},
+      [base + "/php-ext-catalog"]: [{name: "redis", source: "https://github.com/phpredis/phpredis", loaded: false}],
+      [base + "/php-ext"]: {task_id: "extension-task"},
+    },
+    taskModal: (id) => { task = id; },
+  });
+  apps.nativePHPManagerDialog("php84", {params: {Version: "8.4.28"}}, {});
+  tab.onclick();
+  await new Promise(setImmediate);
+  assert.match(control("#native-php-view").innerHTML, /redis/);
+  await button.onclick();
+  const request = calls.find((c) => c.url === base + "/php-ext");
+  assert.equal(request.options.method, "POST");
+  assert.equal(JSON.stringify(request.options.body), '{"ext":"redis"}');
+  assert.equal(task, "extension-task");
 });
 
 test("native PHP upgrade stays on the installed branch", async () => {

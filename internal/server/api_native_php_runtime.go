@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,15 +11,24 @@ import (
 
 	"kunpanel/internal/appstore"
 	"kunpanel/internal/nativephp"
+	"kunpanel/internal/taskx"
 	"kunpanel/internal/util"
 )
 
 func (s *Server) nativePHPInfo(w http.ResponseWriter, inst appstore.Instance) {
 	minor := inst.Params["Minor"]
-	out, err := util.RunWithTimeout(30*time.Second, nativephp.Binary(minor), "-m")
+	extensions, err := nativePHPModules(minor)
 	if err != nil {
 		Fail(w, http.StatusInternalServerError, "读取 PHP 扩展失败: "+err.Error())
 		return
+	}
+	OK(w, map[string]any{"key": inst.Key, "version": inst.Params["Version"], "status": nativephp.Status(minor), "install_mode": "native", "extensions": extensions})
+}
+
+func nativePHPModules(minor string) ([]string, error) {
+	out, err := util.RunWithTimeout(30*time.Second, nativephp.Binary(minor), "-m")
+	if err != nil {
+		return nil, err
 	}
 	var extensions []string
 	for _, line := range strings.Split(out, "\n") {
@@ -27,10 +37,73 @@ func (s *Server) nativePHPInfo(w http.ResponseWriter, inst appstore.Instance) {
 			extensions = append(extensions, line)
 		}
 	}
-	OK(w, map[string]any{"key": inst.Key, "version": inst.Params["Version"], "status": nativephp.Status(minor), "install_mode": "native", "extensions": extensions})
+	return extensions, nil
+}
+
+func nativePHPExtensionCatalog(w http.ResponseWriter, minor string) {
+	list, err := nativephp.Extensions(minor)
+	if err != nil {
+		Fail(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	modules, err := nativePHPModules(minor)
+	if err != nil {
+		Fail(w, http.StatusInternalServerError, "读取 PHP 扩展失败: "+err.Error())
+		return
+	}
+	type entry struct {
+		nativephp.Extension
+		Desc   string `json:"desc"`
+		Loaded bool   `json:"loaded"`
+	}
+	descriptions := phpExtCatalog()
+	entries := make([]entry, 0, len(list))
+	for _, ext := range list {
+		item := entry{Extension: ext, Desc: descriptions[ext.Name].Desc}
+		for _, module := range modules {
+			if strings.EqualFold(module, ext.Name) {
+				item.Loaded = true
+				break
+			}
+		}
+		entries = append(entries, item)
+	}
+	OK(w, entries)
+}
+
+func startNativePHPExtensionTask(w http.ResponseWriter, r *http.Request, key string, remove bool) {
+	var req struct {
+		Ext string `json:"ext"`
+	}
+	if err := readJSON(r, &req); err != nil || !nativephp.SupportsExtension(req.Ext) {
+		Fail(w, http.StatusBadRequest, "请选择支持的第三方 PHP 扩展")
+		return
+	}
+	t, err := taskx.M.Start("app-native-"+key, func(w io.Writer) error {
+		unlock := lockAppOp(key)
+		defer unlock()
+		inst, ok := appstore.NativePHPInstance(key)
+		if !ok {
+			return fmt.Errorf("原生 PHP 实例不存在")
+		}
+		return nativephp.ManageExtension(inst.Params["Minor"], req.Ext, remove, w)
+	})
+	if err != nil {
+		Fail(w, http.StatusConflict, err.Error())
+		return
+	}
+	OK(w, map[string]string{"task_id": t.ID})
 }
 
 func (s *Server) nativePHPRuntimeAction(w http.ResponseWriter, r *http.Request, inst appstore.Instance, action string) {
+	switch action {
+	case "php-ext-catalog":
+		nativePHPExtensionCatalog(w, inst.Params["Minor"])
+		return
+	case "php-ext", "php-ext-remove":
+		startNativePHPExtensionTask(w, r, inst.Key, action == "php-ext-remove")
+		return
+	}
 	unlock := lockAppOp(inst.Key)
 	defer unlock()
 	inst, ok := appstore.NativePHPInstance(inst.Key)
