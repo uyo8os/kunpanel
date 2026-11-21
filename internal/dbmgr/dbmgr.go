@@ -1,5 +1,4 @@
-// Package dbmgr 数据库管理:通过 docker exec 直连面板安装的数据库容器,
-// 提供 SQL 控制台、库列表与一键备份(无需用户输入数据库密码)。
+// Package dbmgr 管理面板安装的原生和容器数据库。
 package dbmgr
 
 import (
@@ -21,6 +20,7 @@ import (
 	"kunpanel/internal/config"
 	"kunpanel/internal/dockerx"
 	"kunpanel/internal/nativemysql"
+	"kunpanel/internal/nativepg"
 	"kunpanel/internal/util"
 )
 
@@ -50,10 +50,15 @@ func Instances() []Instance {
 		out = append(out, Instance{Key: appstore.ParallelMySQLKey, Name: "原生 MySQL", Type: "mysql", Native: true})
 	}
 	out[0].Native = isNativeMySQL("mysql")
+	if _, installed := appstore.NativePGInstance(); installed {
+		out = append(out, Instance{Key: appstore.NativePGKey, Name: "原生 PostgreSQL", Type: "postgres", Native: true})
+	}
 	// 一次 docker ps 批量取状态(此前逐实例起子进程)
 	states := dockerx.ContainerStates()
 	for i := range out {
-		if out[i].Native {
+		if out[i].Key == appstore.NativePGKey {
+			out[i].Running = nativepg.Status() == "running"
+		} else if out[i].Native {
 			out[i].Running = nativemysql.Status() == "running"
 		} else {
 			out[i].Running = states["kun-"+out[i].Key] == "running"
@@ -175,6 +180,13 @@ func Query(key, database, sqlText string) (string, error) {
 	if strings.TrimSpace(sqlText) == "" {
 		return "", fmt.Errorf("SQL 不能为空")
 	}
+	if key == appstore.NativePGKey {
+		out, truncated, err := nativePGSQL(database, strings.NewReader(sqlText), time.Minute)
+		if truncated {
+			out += "\n... (结果过长已截断)"
+		}
+		return out, err
+	}
 	if isNativeMySQL(key) {
 		out, truncated, err := nativeSQL(database, strings.NewReader(sqlText), time.Minute)
 		if truncated {
@@ -216,6 +228,9 @@ type TableResult struct {
 func TableQuery(key, database, sqlText string) (*TableResult, error) {
 	if !isSupported(key) {
 		return nil, fmt.Errorf("不支持的数据库")
+	}
+	if key == appstore.NativePGKey {
+		return nativePGTable(database, sqlText)
 	}
 	if isNativeMySQL(key) {
 		out, truncated, err := nativeSQL(database, strings.NewReader(sqlText), time.Minute)
@@ -293,6 +308,17 @@ func parseTable(out string, unescape func(string) string) *TableResult {
 
 // Databases 列出数据库
 func Databases(key string) ([]string, error) {
+	if key == appstore.NativePGKey {
+		result, err := nativePGTable("", "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname")
+		if err != nil {
+			return nil, err
+		}
+		dbs := make([]string, 0, len(result.Rows))
+		for _, row := range result.Rows {
+			dbs = append(dbs, row[0].(string))
+		}
+		return dbs, nil
+	}
 	var sql string
 	switch key {
 	case "mysql", appstore.ParallelMySQLKey, "mariadb":
@@ -338,8 +364,11 @@ func CreateDatabase(key, name string) error {
 		return fmt.Errorf("不能使用系统库名")
 	}
 	var sql string
-	if key == "postgresql" {
-		sql = `CREATE DATABASE ` + name
+	if appstore.IsPostgreSQLKey(key) {
+		if len(name) > 63 {
+			return fmt.Errorf("PostgreSQL 库名最长为 63 字节")
+		}
+		sql = `CREATE DATABASE "` + name + `"`
 	} else {
 		sql = "CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
 	}
@@ -360,8 +389,11 @@ func DropDatabase(key, name string) error {
 		return fmt.Errorf("系统库禁止删除")
 	}
 	var sql string
-	if key == "postgresql" {
-		sql = `DROP DATABASE IF EXISTS ` + name
+	if appstore.IsPostgreSQLKey(key) {
+		if len(name) > 63 {
+			return fmt.Errorf("PostgreSQL 库名最长为 63 字节")
+		}
+		sql = `DROP DATABASE IF EXISTS "` + name + `"`
 	} else {
 		sql = "DROP DATABASE IF EXISTS `" + name + "`"
 	}
@@ -383,6 +415,9 @@ type BackupInfo struct {
 func Backup(key, database string) (string, error) {
 	if !isSupported(key) || strings.TrimSpace(database) == "" {
 		return "", fmt.Errorf("参数错误")
+	}
+	if key == appstore.NativePGKey {
+		return nativePGBackup(key, database)
 	}
 	if isNativeMySQL(key) {
 		return nativeMySQLBackup(key, database)
@@ -476,7 +511,7 @@ func DeleteBackup(key, file string) error {
 }
 
 func isSupported(key string) bool {
-	if key == appstore.ParallelMySQLKey {
+	if key == appstore.ParallelMySQLKey || key == appstore.NativePGKey {
 		return true
 	}
 	for _, s := range supported {
@@ -541,6 +576,13 @@ func ValidIdentifier(s string) bool {
 // 1. 用旧密码执行 ALTER USER(root@% 与 root@localhost)
 // 2. 同步更新面板实例记录,否则后续管理操作会因旧密码失败
 func ChangeRootPassword(key, newPassword string) error {
+	if key == appstore.NativePGKey {
+		port, err := nativePGPort()
+		if err != nil {
+			return err
+		}
+		return nativepg.ChangePassword(newPassword, port)
+	}
 	if isNativeMySQL(key) {
 		return nativemysql.ChangePassword(newPassword)
 	}
@@ -609,7 +651,7 @@ func Import(key, database, file string) (string, error) {
 	if !isSupported(key) || strings.TrimSpace(database) == "" {
 		return "", fmt.Errorf("参数错误")
 	}
-	native := isNativeMySQL(key)
+	native := key == appstore.NativePGKey || isNativeMySQL(key)
 	if !native && !dockerx.ContainerRunning("kun-"+key) {
 		return "", fmt.Errorf("数据库容器未运行")
 	}
@@ -625,6 +667,9 @@ func Import(key, database, file string) (string, error) {
 			return "", fmt.Errorf("系统库不可通过 SQL 备份恢复覆盖")
 		}
 		defer invalidateDBCount(key)
+		if key == appstore.NativePGKey {
+			return nativePGImport(database, file)
+		}
 		return nativeMySQLImport(database, file)
 	}
 	password, err := passwordFor(key)

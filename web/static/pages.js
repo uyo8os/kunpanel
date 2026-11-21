@@ -53,7 +53,7 @@ PAGES.dashboard = {
     var guideSteps = [
       { no: 1, done: !!(dk && dk.installed), title: "安装 Docker", desc: "当前数据库等容器应用需要 Docker；原生 Nginx 和 PHP 无需 Docker", go: "docker", btn: "去安装" },
       { no: 2, done: sites.length > 0, title: "创建第一个网站", desc: "填个域名就行,支持静态页面、PHP 程序和反向代理", go: "websites", btn: "去建站" },
-      { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、MariaDB、PostgreSQL 等软件一键安装", go: "apps", btn: "去商店" },
+      { no: 3, done: dbs.some(function(r) { return r.running; }), title: "安装数据库或应用", desc: "MySQL、PostgreSQL 等软件一键安装", go: "apps", btn: "去商店" },
       { no: 4, done: !!((st.entrance && st.entrance !== "-") || st.ssl || st.totp_enabled), title: "加固面板安全", desc: "开启安全入口 / HTTPS / 两步验证,任一项即可", go: "settings", btn: "去设置" },
     ];
     var guideDone = guideSteps.filter(function(x) { return x.done; }).length;
@@ -1002,7 +1002,7 @@ PAGES.websites = {
         '<div id="w-db-fields" style="display:none;margin-top:12px">' +
         '<div class="form-item"><label>数据库实例</label><select class="select" id="w-db-inst"></select></div>' +
         '<div class="form-item"><label>数据库名</label><input class="input mono" id="w-db-name" placeholder="小写字母/数字/下划线"></div>' +
-        '<div class="help">库名与访问密码创建后可在数据库页面管理;需先安装并运行 MySQL/MariaDB</div></div></div>' +
+        '<div class="help">需要运行中的 MySQL 或 MariaDB 实例。库名与访问密码可在数据库页面管理。</div></div></div>' +
         '<div class="form-item" style="margin-top:14px"><label>备注</label><input class="input" id="w-remark" placeholder="站点用途说明(可选)"></div>',
       footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">' + I("plus") + ' 创 建</button>',
     });
@@ -1065,7 +1065,7 @@ PAGES.websites = {
           var running = (list || []).filter(function(x) { return x.running; });
           sel.innerHTML = running.length
             ? running.map(function(x) { return '<option value="' + esc(x.key) + '">' + esc(x.name || x.key) + (x.running ? "" : "(未运行)") + "</option>"; }).join("")
-            : '<option value="">(无可用实例,请先安装 MySQL/MariaDB)</option>';
+            : '<option value="">(无可用实例，请先安装或启动 MySQL)</option>';
         }).catch(function() {});
       }
     };
@@ -2109,6 +2109,12 @@ PAGES.websites = {
 
 /* ================= 应用商店 ================= */
 PAGES.apps = {
+  isNativeRedis(instance) {
+    return !!instance && instance.key === "redis-native" && instance.install_mode === "native";
+  },
+  isNativePG(instance) {
+    return !!instance && instance.key === "postgresql-native" && instance.install_mode === "native";
+  },
   isNativePMA(instance) {
     return !!instance && instance.key === "phpmyadmin-native" && instance.install_mode === "native";
   },
@@ -2116,7 +2122,7 @@ PAGES.apps = {
     return !!instance && instance.install_mode === "native" && (instance.key === "mysql" || instance.key === "mysql-native");
   },
   isNewerVersion(latest, current) {
-    var valid = /^\d+\.\d+\.\d+(?:\.\d+)?$/;
+    var valid = /^\d+\.\d+(?:\.\d+){0,2}$/;
     if (!valid.test(latest) || !valid.test(current)) return false;
     var left = latest.split(".").map(Number), right = current.split(".").map(Number);
     for (var i = 0; i < Math.max(left.length, right.length); i++) {
@@ -2180,6 +2186,8 @@ PAGES.apps = {
       shown.forEach(function(t, i) {
         var inst = t.key === "mysql" && instances.find(function(x) { return self.isNativeMySQL(x); });
         if (t.key === "phpmyadmin") inst = instances.find(function(x) { return self.isNativePMA(x); });
+        if (t.key === "postgresql") inst = instances.find(function(x) { return self.isNativePG(x); });
+        if (t.key === "redis") inst = instances.find(function(x) { return self.isNativeRedis(x); });
         if (!inst) inst = instances.find(function(x) { return t.key === "php" ? /^php[0-9]*$/.test(x.key) : x.key === t.key; });
         // 新手推荐标识:建站三件套
         var rec = { php: "建站必装", mysql: "网站数据库", wordpress: "一键建站" }[t.key];
@@ -2205,6 +2213,12 @@ PAGES.apps = {
         } else if (t.key === "phpmyadmin" && inst && !self.isNativePMA(inst)) {
           html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
             '<button class="btn btn-sm btn-primary" data-install="phpmyadmin">安装原生版</button></span>';
+        } else if (t.key === "postgresql" && inst && !self.isNativePG(inst)) {
+          html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
+            '<button class="btn btn-sm btn-primary" data-install="postgresql" data-pg-side-by-side>安装原生版</button></span>';
+        } else if (t.key === "redis" && inst && !self.isNativeRedis(inst)) {
+          html += '<span style="display:flex;gap:6px;align-items:center"><span class="tag tag-info">已有容器版</span>' +
+            '<button class="btn btn-sm btn-primary" data-install="redis" data-redis-side-by-side>安装原生版</button></span>';
         } else if (instMissing && inst.install_mode === "native") {
           html += '<span class="tag tag-danger" title="请在已安装列表检查原生应用">安装异常</span>';
         } else if (instMissing) {
@@ -2249,6 +2263,8 @@ PAGES.apps = {
           var tpl = null;
           templates.forEach(function(t) { if (t.key === b.getAttribute("data-install")) tpl = t; });
           if (tpl && b.hasAttribute("data-mysql-side-by-side")) self.installNativeMySQLDialog(el, null, true);
+          else if (tpl && b.hasAttribute("data-pg-side-by-side")) self.installNativePGDialog(el, null, true);
+          else if (tpl && b.hasAttribute("data-redis-side-by-side")) self.installNativeRedisDialog(el, null, true);
           else if (tpl) self.installDialog(el, tpl);
         };
       });
@@ -2311,7 +2327,9 @@ PAGES.apps = {
           var nativePHP = /^php[0-9]*$/.test(r.key) && r.install_mode === "native";
           var nativeMySQL = self.isNativeMySQL(r);
           var nativePMA = self.isNativePMA(r);
-          var nativeApp = nativeNginx || nativePHP || nativeMySQL || nativePMA;
+          var nativePG = self.isNativePG(r);
+          var nativeRedis = self.isNativeRedis(r);
+          var nativeApp = nativeNginx || nativePHP || nativeMySQL || nativePMA || nativePG || nativeRedis;
           var statusTag = r.status === "running"
             ? '<span class="tag tag-success"><span class="dot on"></span>运行中</span>'
             : (r.status === "missing"
@@ -2320,7 +2338,7 @@ PAGES.apps = {
           var ver = r.params && r.params.Version ? '<span class="tag tag-info" style="margin-left:6px">' + esc(r.params.Version) + '</span>' : "";
           html += '<tr><td><b>' + esc(r.name) + '</b>' + ver + (nativeApp ? ' <span class="tag tag-info">原生</span>' : '') + '<span data-upd-badge="' + r.key + '" style="margin-left:6px"></span></td><td><span class="mono">' + esc(r.key) + '</span></td>';
           html += '<td>' + statusTag + '</td>';
-          var canManage = nativePMA || r.key === "nginx" || r.key === "openresty" ||
+          var canManage = nativePMA || nativePG || nativeRedis || r.key === "nginx" || r.key === "openresty" ||
             nativeMySQL || r.key === "mysql" || r.key === "mariadb" || r.key === "postgresql" || r.key === "redis" ||
             r.key === "python" || r.key === "nodejs" || r.key === "golang" ||
             /^php[0-9]*$/.test(r.key);
@@ -2371,6 +2389,20 @@ PAGES.apps = {
           var badge = body.querySelector('[data-upd-badge="' + r.key + '"]');
           if (!badge) return null;
           var base = /^php[0-9]*$/.test(r.key) ? "php" : r.key;
+          if (self.isNativeRedis(r)) {
+            return api("/apps/redis/versions").then(function(result) {
+              var major = ((r.params && r.params.Version) || "").split(".")[0];
+              var tags = result.releases.filter(function(v) { return v.version.split(".")[0] === major; });
+              return { r: r, badge: badge, tags: tags.map(function(v) { return v.version; }), native: true };
+            }).catch(function() { return { r: r, badge: badge, tags: [], native: true }; });
+          }
+          if (self.isNativePG(r)) {
+            return api("/apps/postgresql/versions").then(function(result) {
+              var major = ((r.params && r.params.Version) || "").split(".")[0];
+              var release = result.releases.find(function(v) { return v.major === major; });
+              return {r: r, badge: badge, tags: release ? [release.version] : [], native: true};
+            }).catch(function() { return {r: r, badge: badge, tags: [], native: true}; });
+          }
           if (self.isNativePMA(r)) {
             return api("/apps/phpmyadmin/versions").then(function(result) {
               return { r: r, badge: badge, tags: result.version ? [result.version] : [], native: true };
@@ -2421,6 +2453,8 @@ PAGES.apps = {
                 var button = qs('[data-native-upgrade]', targetBadge);
                 button.onclick = function() {
                   if (self.isNativePMA(inst)) self.installNativePMADialog(el, inst);
+                  else if (self.isNativePG(inst)) self.installNativePGDialog(el, inst);
+                  else if (self.isNativeRedis(inst)) self.installNativeRedisDialog(el, inst);
                   else if (self.isNativeMySQL(inst)) self.installNativeMySQLDialog(el, inst);
                   else if (isPHP) self.installNativePHPDialog(el, inst);
                   else self.installNativeNginxDialog(el, templates.find(function(x) { return x.key === "nginx"; }), inst);
@@ -2454,7 +2488,7 @@ PAGES.apps = {
               // 容器已删除:专用「彻底清除」弹窗(清安装记录,可选删数据目录)
               var pm = modal({
                 title: "彻底清除 · " + key, width: 470,
-                body: '<div class="help" style="margin-bottom:12px">该应用的容器已不存在,清除将移除安装记录,应用商店即可重新安装。</div>' +
+                body: '<div class="help" style="margin-bottom:12px">该应用的容器已不存在，清除将移除安装记录。</div>' +
                   '<label class="radio-line" style="color:var(--danger)"><input type="checkbox" id="un-del-data"> 同时删除数据目录(含数据库文件/配置,<b>不可恢复</b>)</label>',
                 footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-danger" data-act="yes">确认清除</button>'
               });
@@ -2473,6 +2507,10 @@ PAGES.apps = {
             var target = instances.find(function(x) { return x.key === key; });
             var uninstallText = self.isNativePMA(target)
               ? "卸载原生 <b>phpMyAdmin</b>？卸载会关闭 HTTPS 入口，数据库与账号会保留。"
+              : self.isNativePG(target)
+              ? "卸载原生 <b>PostgreSQL</b>？服务将停止，数据库文件、角色和配置会保留。"
+              : self.isNativeRedis(target)
+              ? "卸载原生 <b>Redis</b>？服务将停止，持久化数据、端口和密码会保留。"
               : self.isNativeMySQL(target)
               ? "卸载原生 <b>MySQL</b>？服务会停止，数据库文件、账号和配置会保留。"
               : target && target.install_mode === "native" && key === "nginx"
@@ -2497,7 +2535,13 @@ PAGES.apps = {
             return;
           }
           api("/apps/instances/" + key + "/" + act, { method: "POST", body: {} })
-            .then(function() { toast("操作成功"); setTimeout(function(){ self.render(el); }, 1500); })
+            .then(function(d) {
+              if (d && d.task_id) {
+                taskModal(d.task_id, function() { toast("操作成功"); self.render(el); });
+                return;
+              }
+              toast("操作成功"); setTimeout(function(){ self.render(el); }, 1500);
+            })
             .catch(function(e) { toast(e.message || "操作失败", "error", 6000); });
         };
       });
@@ -2620,7 +2664,8 @@ PAGES.apps = {
   },
   appManagerDialog(key, instance, pageEl, template) {
     if (this.isNativePMA(instance)) return this.nativePMAManagerDialog(instance, pageEl);
-    if (this.isNativeMySQL(instance)) return this.nativeMySQLManagerDialog(instance, pageEl);
+    if (this.isNativeRedis(instance)) return this.nativeRedisManagerDialog(instance, pageEl);
+    if (this.isNativeMySQL(instance) || this.isNativePG(instance)) return this.nativeDatabaseManagerDialog(instance, pageEl);
     if (/^php[0-9]*$/.test(key) && instance && instance.install_mode === "native") {
       return this.nativePHPManagerDialog(key, instance, pageEl);
     }
@@ -3310,16 +3355,165 @@ PAGES.apps = {
     };
     load();
   },
-  nativeMySQLManagerDialog(instance, pageEl) {
-    var self = this;
+  nativeRedisManagerDialog(instance, pageEl) {
+    var self = this, url = "/apps/instances/" + encodeURIComponent(instance.key) + "/runtime";
     var m = modal({
-      title: "应用管理 · MySQL", width: 560,
+      title: "应用管理 · Redis", width: 620,
+      body: '<div id="native-redis-info">' + skeletonTable(3, 2) + '</div>',
+      footer: '<button class="btn btn-plain" data-act="close">关闭</button><button class="btn btn-primary" data-act="upgrade" disabled>检查版本 / 升级</button>'
+    });
+    var view = qs("#native-redis-info", m.el), upgrade = qs('[data-act="upgrade"]', m.el);
+    qs('[data-act="close"]', m.el).onclick = m.close;
+    upgrade.onclick = function() {
+      m.close();
+      self.installNativeRedisDialog(pageEl, instance);
+    };
+    function field(label, value) {
+      return '<div class="form-item"><label>' + label + '</label><div class="mono" style="overflow-wrap:anywhere">' + esc(value || "—") + '</div></div>';
+    }
+    async function load() {
+      try {
+        var data = await api(url), stats = data.metrics || {};
+        var status = { running: "运行中", exited: "已停止", missing: "安装异常" }[data.status] || "未知";
+        view.innerHTML = field("版本", data.version) + field("服务状态", status) +
+          field("本机连接地址", data.port ? data.host + ":" + data.port : "") +
+          field("数据目录", data.data_dir) +
+          (data.status === "running" ? field("内存 / 客户端连接", (stats.used_memory_human || "—") + " / " + (stats.connected_clients || "—")) +
+            field("AOF 持久化", stats.aof_enabled === "1" ? (stats.aof_last_write_status === "ok" ? "已启用，最近写入正常" : "已启用，最近写入异常") :
+              stats.aof_enabled === "0" ? "已停用" : "状态不可用") : "") +
+          (data.metrics_error ? '<div class="help">' + esc(data.metrics_error) + '</div>' : "") +
+          '<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-sm btn-plain" data-act="refresh">刷新</button>' +
+          '<button class="btn btn-sm btn-plain" data-act="logs">服务日志</button>' +
+          '<button class="btn btn-sm btn-plain" data-act="snapshot"' + (data.status !== "running" ? " disabled" : "") + '>生成 RDB 快照</button>' +
+          '<button class="btn btn-sm btn-plain" data-act="password"' + (data.status === "missing" ? " disabled" : "") + '>修改访问密码</button></div>';
+        upgrade.disabled = data.status === "missing" || !data.version;
+        qs('[data-act="refresh"]', view).onclick = load;
+        qs('[data-act="snapshot"]', view).onclick = async function() {
+          this.disabled = true;
+          try {
+            await api(url + "/snapshot", {method: "POST", body: {}});
+            toast("已启动 RDB 快照，文件保存在数据目录");
+          } catch (e) { toast(e.message || "无法生成快照", "error"); }
+          finally { this.disabled = false; }
+        };
+        qs('[data-act="logs"]', view).onclick = async function() {
+          view.innerHTML = '<button class="btn btn-sm btn-plain" data-act="back">返回运行状态</button><pre class="mono" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:380px;overflow:auto;margin-top:12px"></pre>';
+          qs('[data-act="back"]', view).onclick = load;
+          var output = qs("pre", view);
+          output.textContent = "正在读取服务日志…";
+          try {
+            var result = await api(url + "/logs", {method: "POST", body: {}});
+            output.textContent = result.logs || "暂无日志";
+          } catch (e) { output.textContent = e.message || "读取日志失败"; }
+        };
+        qs('[data-act="password"]', view).onclick = function() {
+          m.close();
+          var pm = modal({
+            title: "修改 Redis 访问密码", width: 460,
+            body: '<div class="form-item required"><label for="native-redis-new-password">新密码</label><input class="input" id="native-redis-new-password" type="password" autocomplete="new-password" placeholder="至少 8 位"></div>' +
+              '<div class="help">运行中的 Redis 会重启，应用需要使用新密码重新连接。</div>',
+            footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-primary" data-act="save">保存</button>'
+          });
+          qs('[data-act="no"]', pm.el).onclick = function() { pm.close(); self.nativeRedisManagerDialog(instance, pageEl); };
+          qs('[data-act="save"]', pm.el).onclick = async function() {
+            var password = qs("#native-redis-new-password", pm.el).value;
+            if (new TextEncoder().encode(password).length < 8) { toast("密码至少需要 8 个字节", "error"); return; }
+            this.disabled = true;
+            try {
+              var task = await api(url + "/password", {method: "POST", body: {password: password}});
+              pm.close();
+              taskModal(task.task_id, function() { self.render(pageEl); });
+            } catch (e) { toast(e.message || "修改密码失败", "error"); this.disabled = false; }
+          };
+        };
+      } catch (e) { view.innerHTML = emptyState("warn", "加载失败", e.message); }
+    }
+    load();
+  },
+  installNativeRedisDialog(el, instance, sideBySide) {
+    var self = this, upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version || "" : "";
+    var m = modal({
+      title: upgrading ? "升级原生 Redis" : "安装原生 Redis", width: 540,
+      body: '<div class="form-item required"><label for="native-redis-version">官方版本</label><select class="select" id="native-redis-version" disabled></select><div class="help" id="native-redis-help"></div></div>' +
+        (upgrading ? '<div class="help">当前版本 ' + esc(current) + '。编译完成后，运行中的服务会暂停以复制数据并切换版本。</div>' :
+          '<div class="form-item required"><label for="native-redis-port">本机端口</label><input class="input" id="native-redis-port" type="number" min="1" max="65535" value="' + (sideBySide ? "6380" : "6379") + '"><div class="help">服务监听 127.0.0.1，默认启用 AOF。</div></div>' +
+          '<div class="form-item required" id="native-redis-password-row"><label for="native-redis-password">访问密码</label><input class="input" id="native-redis-password" type="password" autocomplete="new-password" placeholder="至少 8 位"></div>' +
+          (sideBySide ? '<div class="help">原生实例使用独立的数据目录。</div>' : "")),
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新版本</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? "开始升级" : "开始安装") + '</button>'
+    });
+    var select = qs("#native-redis-version", m.el), help = qs("#native-redis-help", m.el);
+    var retry = qs('[data-act="retry"]', m.el), submit = qs('[data-act="yes"]', m.el);
+    var port = qs("#native-redis-port", m.el), retained = "";
+    async function load() {
+      retry.disabled = select.disabled = submit.disabled = true;
+      help.textContent = "正在查询 Redis 官方版本…";
+      try {
+        var result = await api("/apps/redis/versions");
+        retained = result.retained_version || "";
+        var releases = (result.releases || []).filter(function(v) {
+          return !upgrading || (v.version.split(".")[0] === current.split(".")[0] && self.isNewerVersion(v.version, current));
+        });
+        select.replaceChildren();
+        if (retained) {
+          select.add(new Option(retained, retained));
+          port.value = result.retained_port;
+          port.disabled = true;
+          qs("#native-redis-password-row", m.el).hidden = true;
+          submit.textContent = "重新启用";
+        } else {
+          releases.forEach(function(v) { select.add(new Option(v.version, v.version)); });
+        }
+        if (!select.options.length) select.add(new Option("无可用更新", ""));
+        select.disabled = !releases.length;
+        submit.disabled = !select.value;
+        help.textContent = retained ? "重新启用已有数据，继续使用原访问密码。" :
+          !select.value ? "当前大版本没有更新的正式版。" : "通过官方 SHA-256 校验后在本机编译。";
+      } catch (e) { help.textContent = e.message || "无法获取 Redis 官方版本"; }
+      finally { retry.disabled = false; }
+    }
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    retry.onclick = load;
+    submit.onclick = async function() {
+      var params = {Version: select.value};
+      if (upgrading) params.UpgradeKey = instance.key;
+      else if (!retained) {
+        var password = qs("#native-redis-password", m.el).value;
+        if (!port.value || !port.checkValidity() || new TextEncoder().encode(password).length < 8) {
+          toast("请输入有效端口和至少 8 个字节的密码", "error");
+          return;
+        }
+        params.Port = port.value;
+        params.Password = password;
+      }
+      retry.disabled = select.disabled = submit.disabled = true;
+      try {
+        var task = await api("/apps/install", {method: "POST", body: {key: "redis", params: params}});
+        m.close();
+        taskModal(task.id || task.task_id, function() { self.render(el); });
+      } catch (e) {
+        retry.disabled = submit.disabled = false;
+        select.disabled = !!retained;
+        toast(e.message || "无法启动 Redis 任务", "error");
+      }
+    };
+    load();
+  },
+  nativeDatabaseManagerDialog(instance, pageEl) {
+    var self = this;
+    var pg = this.isNativePG(instance);
+    var m = modal({
+      title: "应用管理 · " + (pg ? "PostgreSQL" : "MySQL"), width: 560,
       body: '<div id="native-mysql-info">' + skeletonTable(3, 2) + '</div>',
       footer: '<button class="btn btn-plain" data-act="close">关闭</button><button class="btn btn-primary" data-act="upgrade" disabled>检查版本 / 升级</button>'
     });
     var view = qs("#native-mysql-info", m.el), upgrade = qs('[data-act="upgrade"]', m.el);
     qs('[data-act="close"]', m.el).onclick = m.close;
-    upgrade.onclick = function() { m.close(); self.installNativeMySQLDialog(pageEl, instance); };
+    upgrade.onclick = function() {
+      m.close();
+      if (pg) self.installNativePGDialog(pageEl, instance);
+      else self.installNativeMySQLDialog(pageEl, instance);
+    };
     api("/apps/instances/" + encodeURIComponent(instance.key) + "/runtime").then(function(data) {
       var status = { running: "运行中", exited: "已停止", missing: "安装异常" }[data.status] || "未知";
       view.innerHTML = '<div class="form-item"><label>版本</label><div class="mono">' + esc(data.version || "-") + '</div></div>' +
@@ -3331,6 +3525,73 @@ PAGES.apps = {
       var dbLink = qs('[data-act="databases"]', view);
       if (dbLink) dbLink.onclick = function() { PAGES.databases.tab = {key: instance.key}; m.close(); };
     }).catch(function(e) { view.innerHTML = emptyState("warn", "加载失败", e.message); });
+  },
+  installNativePGDialog(el, instance, sideBySide) {
+    var self = this, upgrading = !!instance;
+    var current = upgrading && instance.params ? instance.params.Version || "" : "";
+    var m = modal({
+      title: upgrading ? "升级原生 PostgreSQL" : "安装原生 PostgreSQL", width: 540,
+      body: '<div class="form-item required"><label for="native-pg-version">官方版本</label><select class="select" id="native-pg-version" disabled></select><div class="help" id="native-pg-help"></div></div>' +
+        (upgrading ? '<div class="help">当前版本 ' + esc(current) + '。编译完成后，同一大版本的补丁会在短暂停机期间切换。</div>' :
+          '<div class="form-item required"><label for="native-pg-port">本机端口</label><input class="input" id="native-pg-port" type="number" min="1" max="65535" value="' + (sideBySide ? '5433' : '5432') + '"><div class="help">服务仅监听 127.0.0.1，面板通过 Unix Socket 管理。</div></div>' +
+          '<div class="form-item required" id="native-pg-password-row"><label for="native-pg-password">postgres 密码</label><input class="input" type="password" id="native-pg-password" autocomplete="new-password" placeholder="至少 6 位"></div>' +
+          (sideBySide ? '<div class="help">在数据库页导出容器版的 SQL 备份后，可导入原生实例。</div>' : '')),
+      footer: '<button class="btn btn-plain" data-act="no">取消</button><button class="btn btn-plain" data-act="retry">刷新版本</button><button class="btn btn-primary" data-act="yes" disabled>' + (upgrading ? '开始升级' : '开始安装') + '</button>'
+    });
+    var select = qs("#native-pg-version", m.el), help = qs("#native-pg-help", m.el);
+    var retry = qs('[data-act="retry"]', m.el), submit = qs('[data-act="yes"]', m.el);
+    var retained = "";
+    function update() {
+      submit.disabled = !select.value || (upgrading && !self.isNewerVersion(select.value, current));
+      help.textContent = !select.value ? "该大版本暂无可用的官方版本。" :
+        upgrading && submit.disabled ? "已是当前大版本的官方最新补丁。" :
+        !upgrading && retained ? "重新启用已有数据，继续使用原 postgres 密码。" : "安装时会校验源码包的官方 SHA-256 并在本机编译。";
+    }
+    async function load() {
+      retry.disabled = select.disabled = submit.disabled = true;
+      help.textContent = "正在查询 PostgreSQL 官方版本…";
+      try {
+        var result = await api("/apps/postgresql/versions");
+        retained = result.retained_major || "";
+        var major = upgrading ? current.split(".")[0] : retained;
+        var versions = result.releases.filter(function(r) { return !major || r.major === major; }).map(function(r) { return r.version; });
+        if (!upgrading && result.retained_version) {
+          versions = [result.retained_version].concat(versions.filter(function(v) { return v !== result.retained_version; }));
+        }
+        select.innerHTML = versions.length ? versions.map(function(v) { return '<option value="' + esc(v) + '">' + esc(v) + '</option>'; }).join("") : '<option value="">无可用版本</option>';
+        if (!upgrading) qs("#native-pg-password-row", m.el).hidden = !!retained;
+        select.disabled = !versions.length;
+        update();
+      } catch (e) { help.textContent = e.message || "无法获取官方版本"; }
+      finally { retry.disabled = false; }
+    }
+    qs('[data-act="no"]', m.el).onclick = m.close;
+    retry.onclick = load;
+    select.onchange = update;
+    submit.onclick = async function() {
+      var params = {Version: select.value};
+      if (upgrading) params.UpgradeKey = instance.key;
+      else {
+        var port = qs("#native-pg-port", m.el), password = qs("#native-pg-password", m.el).value;
+        if (!port.value || !port.checkValidity() || (!retained && password.length < 6)) {
+          toast("请输入有效端口，首次安装时需设置至少 6 位密码", "error");
+          return;
+        }
+        params.Port = port.value;
+        if (!retained) params.Password = password;
+      }
+      retry.disabled = select.disabled = submit.disabled = true;
+      try {
+        var task = await api("/apps/install", {method: "POST", body: {key: "postgresql", params: params}});
+        m.close();
+        taskModal(task.id || task.task_id, function() { self.render(el); });
+      } catch (e) {
+        retry.disabled = select.disabled = false;
+        update();
+        toast(e.message || "无法启动 PostgreSQL 任务", "error", 6000);
+      }
+    };
+    load();
   },
   installNativeMySQLDialog(el, instance, sideBySide) {
     var self = this, upgrading = !!instance;
@@ -3516,7 +3777,9 @@ PAGES.apps = {
     if (t.key === "nginx") return this.installNativeNginxDialog(el, t);
     if (t.key === "php") return this.installNativePHPDialog(el);
     if (t.key === "mysql") return this.installNativeMySQLDialog(el);
+    if (t.key === "postgresql") return this.installNativePGDialog(el);
     if (t.key === "phpmyadmin") return this.installNativePMADialog(el);
+    if (t.key === "redis") return this.installNativeRedisDialog(el);
     var paramsHTML = (t.params || []).map(function(p) {
       var field;
       if (p.type === "select") {
@@ -3587,8 +3850,9 @@ PAGES.databases = {
     try { instances = (await api("/db/instances")) || []; }
     catch (e) { el.innerHTML = emptyState("warn", "加载失败", e.message); return; }
     var running = instances.filter((i) => i.running);
-    var notRunning = instances.filter((i) => !i.running);
-    var typeNames = Object.fromEntries(instances.map(function(i) { return [i.key, i.native ? "原生 MySQL" : i.name]; }));
+    var hasNativePG = instances.some((i) => i.key === "postgresql-native");
+    var notRunning = instances.filter((i) => !i.running && (!hasNativePG || i.key !== "postgresql"));
+    var typeNames = Object.fromEntries(instances.map(function(i) { return [i.key, i.native && i.type === "mysql" ? "原生 MySQL" : i.name]; }));
 
     var self = this;
     if (!running.length) {
@@ -3612,7 +3876,7 @@ PAGES.databases = {
       el.innerHTML = '<div class="card" style="max-width:680px;margin:40px auto;text-align:center;padding:48px 32px">' +
         '<div style="margin-bottom:16px">' + iconBox("database", 64) + "</div>" +
         '<h3 style="font-size:18px;margin-bottom:8px">未检测到运行中的数据库</h3>' +
-        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:20px">可在应用商店一键安装 MySQL / MariaDB / PostgreSQL</p>' +
+        '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:20px">可在应用商店一键安装 MySQL 或 PostgreSQL</p>' +
         '<a class="btn btn-primary" href="#/apps">去应用商店安装</a></div>';
       return;
     }
@@ -3632,6 +3896,7 @@ PAGES.databases = {
 
     var activeDB = running.find(function(i) { return i.key === self.tab.key; });
     var isMySQLLike = activeDB.type === "mysql";
+    var adminRole = isMySQLLike ? "root" : "postgres";
     var head = '<div class="waf-hero db-hero">' +
       '<div class="waf-hero-left">' + iconBox("database", 46) +
       '<div class="stat-meta"><h3>' + esc(typeNames[this.tab.key] || this.tab.key) + " " + stateTag(true, "运行中", "已停止") + "</h3>" +
@@ -3639,7 +3904,7 @@ PAGES.databases = {
       '<div class="waf-hero-right">' +
       (isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-users">' + I("key") + " 用户管理</button>" : "") +
       (isMySQLLike && !activeDB.native ? '<button class="btn btn-sm btn-plain" id="db-repl">' + I("refresh") + " 主从同步</button>" : "") +
-      '<button class="btn btn-sm btn-plain" id="db-rootpwd">' + I("key") + " root 密码</button>" +
+      (isMySQLLike || activeDB.native ? '<button class="btn btn-sm btn-plain" id="db-rootpwd">' + I("key") + " " + adminRole + " 密码</button>" : "") +
       (nativePMA && isMySQLLike ? '<button class="btn btn-sm btn-plain" id="db-pma">' + I("external") + ' phpMyAdmin</button>' :
         pma && !activeDB.native && isMySQLLike ? '<a class="btn btn-sm btn-plain" href="' + esc(pma.url) + '" target="_blank" rel="noopener">' + I("external") + " " + esc(pma.label) + "</a>" : "") +
       '<button class="btn btn-sm btn-plain" id="db-refresh" title="刷新">' + I("refresh") + "</button></div></div>";
@@ -3667,11 +3932,12 @@ PAGES.databases = {
     if (replBtn) replBtn.onclick = function() { self.replMgr(); };
     var pmaBtn = qs("#db-pma", el);
     if (pmaBtn) pmaBtn.onclick = function() { PAGES.apps.openNativePMA(activeDB.key); };
-    qs("#db-rootpwd", el).onclick = function() {
+    var pwdBtn = qs("#db-rootpwd", el);
+    if (pwdBtn) pwdBtn.onclick = function() {
       var instName = typeNames[self.tab.key] || self.tab.key;
       var pm = modal({
-        title: "修改 root 密码 · " + instName, width: 460,
-        body: '<div class="form-item required"><label>新密码</label><input class="input" type="password" id="db-pwd1" placeholder="至少 6 位"><div class="help">修改后面板与你的应用程序都需使用新密码连接数据库</div></div>' +
+        title: "修改 " + adminRole + " 密码 · " + instName, width: 460,
+        body: '<div class="form-item required"><label>新密码</label><input class="input" type="password" id="db-pwd1" placeholder="至少 6 位"><div class="help">使用此账号连接数据库的应用需更新密码。</div></div>' +
           '<div class="form-item required"><label>确认新密码</label><input class="input" type="password" id="db-pwd2"></div>',
         footer: '<button class="btn btn-plain" data-act="no">取 消</button><button class="btn btn-primary" data-act="yes">确认修改</button>',
       });
@@ -3682,7 +3948,7 @@ PAGES.databases = {
         if (p1 !== p2) { toast("两次输入的密码不一致", "error"); return; }
         try {
           await api("/db/" + self.tab.key + "/root-password", { method: "POST", body: { new_password: p1 } });
-          toast("root 密码修改成功,请牢记新密码");
+          toast(adminRole + " 密码已修改");
           pm.close();
         } catch (e) { toast(e.message, "error", 6000); }
       };
@@ -4089,7 +4355,9 @@ PAGES.databases = {
       n.onclick = function() {
         var tbl = n.dataset.tbl;
         var sqlBox = qs("#db-sql", el);
-        sqlBox.value = "SELECT * FROM `" + tbl + "` LIMIT 20";
+        sqlBox.value = key === "postgresql" || key === "postgresql-native"
+          ? 'SELECT * FROM public."' + tbl.replace(/"/g, '""') + '" LIMIT 20'
+          : "SELECT * FROM `" + tbl.replace(/`/g, "``") + "` LIMIT 20";
         qs("#db-run", el).click();
       };
     });
@@ -4305,13 +4573,15 @@ PAGES.cron = {
     qs("#cr-type", m.el).value = job.type || "shell";
     var dbKey = qs("#cr-dbkey", m.el);
     if (job.db_key === "mysql-native") dbKey.add(new Option("原生 MySQL", "mysql-native"));
+    if (job.db_key === "postgresql-native") dbKey.add(new Option("原生 PostgreSQL", "postgresql-native"));
     dbKey.value = job.db_key || "mysql";
     api("/db/instances").then(function(list) {
       for (var inst of list) {
         if (!inst.native) continue;
+        var name = inst.type === "postgres" ? "原生 PostgreSQL" : "原生 MySQL";
         var opt = Array.from(dbKey.options).find(function(o) { return o.value === inst.key; });
-        if (opt) opt.text = "原生 MySQL";
-        else dbKey.add(new Option("原生 MySQL", inst.key));
+        if (opt) opt.text = name;
+        else dbKey.add(new Option(name, inst.key));
       }
     }).catch(function() {});
     // ---- 执行周期可视化选择 ----

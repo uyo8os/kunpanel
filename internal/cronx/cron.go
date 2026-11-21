@@ -272,7 +272,7 @@ func validateJob(j *Job) error {
 			j.Keep = 10
 		}
 	case "dbbackup":
-		if !appstore.IsMySQLKey(j.DBKey) && j.DBKey != "mariadb" && j.DBKey != "postgresql" {
+		if !appstore.IsMySQLKey(j.DBKey) && j.DBKey != "mariadb" && !appstore.IsPostgreSQLKey(j.DBKey) {
 			return fmt.Errorf("请选择 MySQL、MariaDB 或 PostgreSQL 数据库实例")
 		}
 		if strings.TrimSpace(j.DBName) == "" {

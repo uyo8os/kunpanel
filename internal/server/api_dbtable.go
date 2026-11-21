@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"kunpanel/internal/appstore"
 	"kunpanel/internal/dbmgr"
 )
 
@@ -17,7 +18,7 @@ func (s *Server) handleDbTables(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	db := r.URL.Query().Get("db")
 	var sql string
-	if key == "postgresql" {
+	if appstore.IsPostgreSQLKey(key) {
 		sql = "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename"
 	} else {
 		sql = "SHOW TABLES"
@@ -63,8 +64,8 @@ func (s *Server) handleDbTableData(w http.ResponseWriter, r *http.Request) {
 	pageSize := 50
 	offset := (page - 1) * pageSize
 	var sql string
-	if key == "postgresql" {
-		sql = `SELECT * FROM ` + req.Table + ` LIMIT ` + fmt.Sprintf("%d", pageSize) + ` OFFSET ` + fmt.Sprintf("%d", offset)
+	if appstore.IsPostgreSQLKey(key) {
+		sql = fmt.Sprintf(`SELECT * FROM public."%s" LIMIT %d OFFSET %d`, req.Table, pageSize, offset)
 	} else {
 		sql = "SELECT * FROM `" + req.Table + "` LIMIT " + fmt.Sprintf("%d", pageSize) + " OFFSET " + fmt.Sprintf("%d", offset)
 	}

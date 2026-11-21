@@ -18,8 +18,10 @@ import (
 	"kunpanel/internal/dockerx"
 	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/nativenginx"
+	"kunpanel/internal/nativepg"
 	"kunpanel/internal/nativephp"
 	"kunpanel/internal/nativepma"
+	"kunpanel/internal/nativeredis"
 	"kunpanel/internal/util"
 )
 
@@ -65,7 +67,7 @@ type Instance struct {
 func Templates() []Template {
 	// 目录只提供维护中的内置应用。自定义应用属于用户数据，仍保留。
 	allowed := map[string]bool{
-		"nginx": true, "php": true, "mysql": true, "mariadb": true,
+		"nginx": true, "php": true, "mysql": true,
 		"postgresql": true, "phpmyadmin": true, "redis": true,
 	}
 	var templates []Template
@@ -398,16 +400,16 @@ func builtinTemplates() []Template {
 			},
 			WebURL: func(p map[string]string) string { return fmt.Sprintf("http://<IP>:%s", pval(p, "Port", "8081")) },
 		},
-        {
-            Key: "kunfaka", Name: "坤发卡", Category: "建站", Icon: "store", Version: "latest",
-            Desc: "全自动发卡系统:7×24 无人值守,6 大支付通道(含 USDT 免挂),秒级自动发货,内置应用商店+5 套主题",
-            Params: []Param{
-                {Key: "Port", Label: "监听端口", Default: "8080"},
-                {Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@FK2026"},
-            },
-            ComposeFrom: func(p map[string]string) string {
-                port := pval(p, "Port", "8080")
-                return `services:
+		{
+			Key: "kunfaka", Name: "坤发卡", Category: "建站", Icon: "store", Version: "latest",
+			Desc: "全自动发卡系统:7×24 无人值守,6 大支付通道(含 USDT 免挂),秒级自动发货,内置应用商店+5 套主题",
+			Params: []Param{
+				{Key: "Port", Label: "监听端口", Default: "8080"},
+				{Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@FK2026"},
+			},
+			ComposeFrom: func(p map[string]string) string {
+				port := pval(p, "Port", "8080")
+				return `services:
   kunfaka:
     image: kungec/kunfaka:latest
     container_name: kun-kunfaka
@@ -445,21 +447,21 @@ func builtinTemplates() []Template {
       - ./db_data:/var/lib/mysql
       - ./database.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
 `
-            },
-            WebURL: func(p map[string]string) string {
-                return "http://<IP>:" + pval(p, "Port", "8080")
-            },
-        },
-        {
-            Key: "nat-cloud", Name: "NAT Cloud", Category: "建站", Icon: "cloud", Version: "latest",
-            Desc: "NAT VPS 销售与自动化开通系统:套餐销售/LXC 节点全自动交付/计费/工单/实名/返利/开放 API",
-            Params: []Param{
-                {Key: "Port", Label: "监听端口", Default: "8082"},
-                {Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@NC2026"},
-            },
-            ComposeFrom: func(p map[string]string) string {
-                port := pval(p, "Port", "8082")
-                return `services:
+			},
+			WebURL: func(p map[string]string) string {
+				return "http://<IP>:" + pval(p, "Port", "8080")
+			},
+		},
+		{
+			Key: "nat-cloud", Name: "NAT Cloud", Category: "建站", Icon: "cloud", Version: "latest",
+			Desc: "NAT VPS 销售与自动化开通系统:套餐销售/LXC 节点全自动交付/计费/工单/实名/返利/开放 API",
+			Params: []Param{
+				{Key: "Port", Label: "监听端口", Default: "8082"},
+				{Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@NC2026"},
+			},
+			ComposeFrom: func(p map[string]string) string {
+				port := pval(p, "Port", "8082")
+				return `services:
   web:
     image: php:8.2-apache
     container_name: natcloud-web
@@ -489,23 +491,23 @@ volumes:
   nc_data:
   nc_db:
 `
-            },
-            WebURL: func(p map[string]string) string {
-                return "http://<IP>:" + pval(p, "Port", "8082")
-            },
-        },
-        {
-            Key: "kunpay", Name: "坤支付", Category: "建站", Icon: "store", Version: "latest",
-            Desc: "个人免签约码支付系统(Go 单二进制 + SQLite):易支付协议完全兼容,安卓APP扫码配对自动到账,多码轮询,审计级资金流水。首次登录 admin/admin123,系统强制改密",
-            Params: []Param{
-                {Key: "Port", Label: "监听端口", Default: "8090", Type: "port", Required: true},
-            },
-            ComposeFrom: func(p map[string]string) string {
-                port := pval(p, "Port", "8090")
-                // 镜像未发布 Docker Hub:compose 远程 Git 上下文构建(BuildKit 支持),
-                // kunpay 仓库自带多阶段 Dockerfile(CA/时区/非 root/healthcheck 齐备),
-                // 首次安装构建约 2-5 分钟,之后走镜像缓存
-                return `services:
+			},
+			WebURL: func(p map[string]string) string {
+				return "http://<IP>:" + pval(p, "Port", "8082")
+			},
+		},
+		{
+			Key: "kunpay", Name: "坤支付", Category: "建站", Icon: "store", Version: "latest",
+			Desc: "个人免签约码支付系统(Go 单二进制 + SQLite):易支付协议完全兼容,安卓APP扫码配对自动到账,多码轮询,审计级资金流水。首次登录 admin/admin123,系统强制改密",
+			Params: []Param{
+				{Key: "Port", Label: "监听端口", Default: "8090", Type: "port", Required: true},
+			},
+			ComposeFrom: func(p map[string]string) string {
+				port := pval(p, "Port", "8090")
+				// 镜像未发布 Docker Hub:compose 远程 Git 上下文构建(BuildKit 支持),
+				// kunpay 仓库自带多阶段 Dockerfile(CA/时区/非 root/healthcheck 齐备),
+				// 首次安装构建约 2-5 分钟,之后走镜像缓存
+				return `services:
   kunpay:
     build: https://github.com/kungec/kunpay.git
     image: kunpay-local:latest
@@ -520,19 +522,19 @@ volumes:
 volumes:
   kunpay_data:
 `
-            },
-            WebURL: func(p map[string]string) string { return fmt.Sprintf("http://<IP>:%s", pval(p, "Port", "8090")) },
-        },
-        {
-            Key: "kunying-cms", Name: "坤影CMS", Category: "建站", Icon: "film", Version: "latest",
-            Desc: "免费开源影视CMS:采集聚合/会员VIP/多主题(含2套加密付费主题)/SEO,浏览器安装向导一键部署",
-            Params: []Param{
-                {Key: "Port", Label: "监听端口", Default: "8083", Type: "port", Required: true},
-                {Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@KY2026", Required: true},
-            },
-            ComposeFrom: func(p map[string]string) string {
-                port := pval(p, "Port", "8083")
-                return `services:
+			},
+			WebURL: func(p map[string]string) string { return fmt.Sprintf("http://<IP>:%s", pval(p, "Port", "8090")) },
+		},
+		{
+			Key: "kunying-cms", Name: "坤影CMS", Category: "建站", Icon: "film", Version: "latest",
+			Desc: "免费开源影视CMS:采集聚合/会员VIP/多主题(含2套加密付费主题)/SEO,浏览器安装向导一键部署",
+			Params: []Param{
+				{Key: "Port", Label: "监听端口", Default: "8083", Type: "port", Required: true},
+				{Key: "DBRootPassword", Label: "MySQL root 密码", Default: "Kun@KY2026", Required: true},
+			},
+			ComposeFrom: func(p map[string]string) string {
+				port := pval(p, "Port", "8083")
+				return `services:
   web:
     build: ./src
     image: kunying-local:latest
@@ -565,13 +567,13 @@ volumes:
   kunying_upload:
   kunying_db:
 `
-            },
-            WebURL: func(p map[string]string) string {
-                return fmt.Sprintf("http://<IP>:%s", pval(p, "Port", "8083"))
-            },
-        },
-        {
-            Key: "npm", Name: "Nginx Proxy Manager", Category: "Web服务器", Icon: "shuffle", Version: "latest",
+			},
+			WebURL: func(p map[string]string) string {
+				return fmt.Sprintf("http://<IP>:%s", pval(p, "Port", "8083"))
+			},
+		},
+		{
+			Key: "npm", Name: "Nginx Proxy Manager", Category: "Web服务器", Icon: "shuffle", Version: "latest",
 			Desc: "可视化反向代理管理,自动申请 SSL 证书",
 			Params: []Param{
 				{Key: "Port", Label: "管理端口", Default: "81", Type: "port", Required: true},
@@ -636,7 +638,7 @@ networks:
 			Params: []Param{
 				{Key: "Version", Label: "Python 版本", Default: "3.12", Type: "select", Required: true,
 					Options: []string{"3.12", "3.11", "3.10", "3.9"},
-					Help: "slim 精简镜像;进入终端后 python / pip 即用,工作目录 /app"},
+					Help:    "slim 精简镜像;进入终端后 python / pip 即用,工作目录 /app"},
 			},
 			ComposeFrom: func(p map[string]string) string {
 				return fmt.Sprintf(`services:
@@ -659,7 +661,7 @@ networks:
 			Params: []Param{
 				{Key: "Version", Label: "Node.js 版本", Default: "22", Type: "select", Required: true,
 					Options: []string{"22", "20", "18"},
-					Help: "slim 精简镜像;进入终端后 node / npm 即用,工作目录 /app"},
+					Help:    "slim 精简镜像;进入终端后 node / npm 即用,工作目录 /app"},
 			},
 			ComposeFrom: func(p map[string]string) string {
 				return fmt.Sprintf(`services:
@@ -682,7 +684,7 @@ networks:
 			Params: []Param{
 				{Key: "Version", Label: "Go 版本", Default: "1.23", Type: "select", Required: true,
 					Options: []string{"1.23", "1.22", "1.21"},
-					Help: "标准 bookworm 镜像;进入终端后 go 即用,工作目录 /app(GOPATH=/go)"},
+					Help:    "标准 bookworm 镜像;进入终端后 go 即用,工作目录 /app(GOPATH=/go)"},
 			},
 			ComposeFrom: func(p map[string]string) string {
 				return fmt.Sprintf(`services:
@@ -907,6 +909,20 @@ func List() ([]Instance, error) {
 		}
 	}
 	for i := range list {
+		if list[i].Key == NativeRedisKey && list[i].InstallMode == "native" {
+			list[i].Status = nativeredis.Status()
+			if version := nativeredis.Version(); list[i].Params != nil && version != "" {
+				list[i].Params["Version"] = version
+			}
+			continue
+		}
+		if list[i].Key == NativePGKey && list[i].InstallMode == "native" {
+			list[i].Status = nativepg.Status()
+			if version := nativepg.Version(); list[i].Params != nil && version != "" {
+				list[i].Params["Version"] = version
+			}
+			continue
+		}
 		if list[i].Key == NativePMAKey && list[i].InstallMode == "native" {
 			list[i].Status = nativepma.Status()
 			if version := nativepma.Version(); list[i].Params != nil && version != "" {
@@ -1860,7 +1876,6 @@ func allocatePHPKey(version string) (string, error) {
 	return "php" + ver, nil
 }
 
-
 // EnsureBtRootMount 宝塔迁移:确保 Nginx 容器挂载宝塔站点目录 /www/wwwroot
 // (phpfpm 迁移站点 root 保持宿主机原路径,容器内同路径可直接服务)
 func EnsureBtRootMount(w io.Writer) error {
@@ -1911,6 +1926,7 @@ func EnsureBtRootMount(w io.Writer) error {
 	}
 	return nil
 }
+
 // tailWriter 透传写入并保留尾部若干字节,失败时把 compose 的真实报错带进任务错误
 type tailWriter struct {
 	w   io.Writer

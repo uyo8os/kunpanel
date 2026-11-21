@@ -74,6 +74,18 @@ bash kp-install.sh --uninstall              # 卸载
 
 安装时设置独立的 HTTPS 端口和访问密码。浏览器先用 `phpmyadmin` 和访问密码通过入口认证，再用数据库账号登录。面板证书覆盖所填访问域名或 IP 时会复用该证书，否则生成自签名证书。已有容器版可与原生版并行。
 
+### 原生 PostgreSQL
+
+在「应用商店 → PostgreSQL」可选择官方仍维护的正式分支。面板从 PostgreSQL 官方下载源码并校验 SHA-256，在面板数据盘编译，再用 systemd 运行独立服务。默认监听 `127.0.0.1:5432`，已有容器版时安装表单建议用 `5433`。面板通过 Unix Socket 和本地账号认证执行数据库管理。
+
+数据库页支持建库、SQL 查询、`postgres` 改密、SQL 备份恢复和定时备份。同一大版本内可检查并升级补丁。卸载时保留数据、角色和配置，按原大版本重新安装即可启用。容器迁移和跨大版本迁移使用逻辑备份，导入前需准备备份引用的角色。
+
+### 原生 Redis
+
+在「应用商店 → Redis」可选择官方清单中 7.2 及以上各分支的最新正式版。面板校验源码的官方 SHA-256，在面板数据盘编译 Redis 核心服务，再用 systemd 运行。默认监听 `127.0.0.1:6379`，启用 AOF 每秒刷盘。已有容器版时安装表单建议用 `6380`，两个实例各自使用独立的数据目录。
+
+在「已安装 → Redis → 管理」可查看运行状态和日志、修改访问密码、生成 `dump.rdb` 快照以及检查同大版本更新。升级先编译再停机复制数据，旧版本的数据副本会保留。卸载保留数据、端口和密码，从应用商店重新启用即可继续使用。
+
 ### Windows
 
 下载 [Release](https://github.com/uyo8os/kunpanel/releases) 中的 `kunpanel_windows_amd64.zip`,
@@ -122,8 +134,8 @@ docker run -d --name kunpanel -p 20000:20000 \
 - 站点备份:服务端留存 / 打包下载 / 上传恢复(原子化,失败不伤原站)
 
 ### 🗄 数据库 · 应用 · 容器
-- MySQL / MariaDB / PostgreSQL / Redis 管理:SQL 控制台、备份导入导出、root 改密、phpMyAdmin 快捷入口
-- 应用商店提供 Nginx、PHP、MySQL、MariaDB、PostgreSQL、phpMyAdmin 和 Redis;支持**自定义应用**(Compose 在线校验)
+- MySQL / MariaDB / PostgreSQL 管理:SQL 控制台、备份导入导出和账号管理。Redis 在应用商店管理运行状态、访问密码和快照。
+- 应用商店提供 Nginx、PHP、MySQL、PostgreSQL、phpMyAdmin 和 Redis，支持**自定义应用**(Compose 在线校验)
 - 容器 / 镜像 / 网络 / 卷管理,容器终端,资源限制热更新,日志轮转配置
 
 ### 📂 文件 · 任务 · 监控

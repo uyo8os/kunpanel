@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -69,10 +70,14 @@ func nativeMySQLBackup(key, database string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return streamSQLBackup(key, database, cmd)
+}
+
+func streamSQLBackup(key, database string, cmd *exec.Cmd) (string, error) {
 	if err := os.MkdirAll(backupsDir(), 0o755); err != nil {
 		return "", err
 	}
-	file, err := os.CreateTemp(backupsDir(), ".mysql-backup-")
+	file, err := os.CreateTemp(backupsDir(), ".db-backup-")
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +87,7 @@ func nativeMySQLBackup(key, database string) (string, error) {
 	cmd.Stdout, cmd.Stderr = zip, stderr
 	dumpErr := cmd.Run()
 	if err := errors.Join(dumpErr, zip.Close(), file.Close()); err != nil {
-		return "", fmt.Errorf("MySQL 导出失败: %s (%w)", strings.TrimSpace(stderr.String()), err)
+		return "", fmt.Errorf("数据库导出失败: %s (%w)", strings.TrimSpace(stderr.String()), err)
 	}
 	name := BackupPrefix(key, database) + time.Now().Format("20060102_150405.000000000") + ".sql.gz"
 	path := filepath.Join(backupsDir(), name)
@@ -93,22 +98,30 @@ func nativeMySQLBackup(key, database string) (string, error) {
 }
 
 func nativeMySQLImport(database, path string) (string, error) {
-	file, err := os.Open(path)
+	err := withSQLInput(path, func(input io.Reader) error {
+		_, _, err := nativeSQL(database, input, 30*time.Minute)
+		return err
+	})
 	if err != nil {
 		return "", err
+	}
+	return "导入完成", nil
+}
+
+func withSQLInput(path string, run func(io.Reader) error) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
 	}
 	defer file.Close()
 	var input io.Reader = file
 	if strings.HasSuffix(strings.ToLower(path), ".gz") {
 		zip, err := gzip.NewReader(file)
 		if err != nil {
-			return "", fmt.Errorf("打开 gzip SQL 文件失败: %w", err)
+			return fmt.Errorf("打开 gzip SQL 文件失败: %w", err)
 		}
 		defer zip.Close()
 		input = zip
 	}
-	if _, _, err := nativeSQL(database, input, 30*time.Minute); err != nil {
-		return "", err
-	}
-	return "导入完成", nil
+	return run(input)
 }

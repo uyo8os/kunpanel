@@ -15,6 +15,7 @@ import (
 	"kunpanel/internal/dockerx"
 	"kunpanel/internal/nativemysql"
 	"kunpanel/internal/nativenginx"
+	"kunpanel/internal/nativepg"
 	"kunpanel/internal/taskx"
 	"kunpanel/internal/util"
 	"kunpanel/internal/websites"
@@ -27,6 +28,14 @@ func (s *Server) handleAppTemplates(w http.ResponseWriter, r *http.Request) {
 		list = []appstore.Template{}
 	}
 	for i := range list {
+		if list[i].Key == "redis" {
+			list[i].Desc = "从 Redis 官方源码编译的原生内存数据库，默认启用 AOF 持久化"
+			list[i].Version, list[i].Params = "官方版本", nil
+		}
+		if list[i].Key == "postgresql" {
+			list[i].Desc = "从 PostgreSQL 官方源码编译，支持当前维护的正式分支"
+			list[i].Version, list[i].Params = "官方版本", nil
+		}
 		if list[i].Key == "phpmyadmin" {
 			list[i].Desc = "原生 Web 数据库管理，连接面板安装的 MySQL 和 MariaDB"
 			list[i].Version, list[i].Params = "官方版本", nil
@@ -83,6 +92,14 @@ func (s *Server) handleAppInstall(w http.ResponseWriter, r *http.Request) {
 		s.installNativeMySQL(w, req.Params)
 		return
 	}
+	if req.Key == "postgresql" {
+		s.installNativePG(w, req.Params)
+		return
+	}
+	if req.Key == "redis" {
+		s.installNativeRedis(w, req.Params)
+		return
+	}
 	if req.Key == "phpmyadmin" {
 		s.installNativePMA(w, req.Params)
 		return
@@ -127,6 +144,14 @@ func (s *Server) handleAppAction(w http.ResponseWriter, r *http.Request) {
 		RemoveData bool `json:"remove_data"`
 	}
 	_ = readJSON(r, &req)
+	if key == appstore.NativeRedisKey {
+		s.nativeRedisAction(w, action)
+		return
+	}
+	if key == appstore.NativePGKey {
+		s.nativePGAction(w, action)
+		return
+	}
 	if key == appstore.NativePMAKey {
 		s.nativePMAAction(w, action)
 		return
@@ -263,6 +288,19 @@ func isPHPRuntimeKey(key string) bool {
 // handleAppRuntimeInfo 运行时信息:版本号(PHP/php-fpm/nginx/openresty -v)、PHP 已加载扩展
 func (s *Server) handleAppRuntimeInfo(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if key == appstore.NativeRedisKey {
+		s.nativeRedisRuntime(w, r)
+		return
+	}
+	if key == appstore.NativePGKey {
+		inst, ok := appstore.NativePGInstance()
+		if !ok {
+			Fail(w, http.StatusNotFound, "原生 PostgreSQL 未安装")
+			return
+		}
+		OK(w, map[string]any{"key": key, "version": nativepg.Version(), "port": inst.Params["Port"], "socket": nativepg.SocketDir(), "status": nativepg.Status(), "install_mode": "native"})
+		return
+	}
 	if key == appstore.NativePMAKey {
 		if _, ok := appstore.NativePMAInstance(); !ok {
 			Fail(w, http.StatusNotFound, "原生 phpMyAdmin 未安装")
@@ -425,6 +463,10 @@ func gatewayErrorLog(key string) string {
 
 func (s *Server) handleAppRuntimeAction(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
+	if key == appstore.NativeRedisKey {
+		s.nativeRedisRuntimeAction(w, r)
+		return
+	}
 	if key == appstore.NativePMAKey {
 		if _, ok := appstore.NativePMAInstance(); !ok {
 			Fail(w, http.StatusNotFound, "原生 phpMyAdmin 未安装")
