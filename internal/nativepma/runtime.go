@@ -29,6 +29,7 @@ import (
 
 const service = "kunpanel-phpmyadmin"
 const serviceMarker = "Description=KunPanel phpMyAdmin PHP-FPM"
+const fpmLogging = "error_log = syslog\nsyslog.ident = " + service
 const nginxMarker = "# Managed by KunPanel phpMyAdmin\n"
 const NginxConfigName = "kunpanel-phpmyadmin.conf"
 
@@ -208,19 +209,11 @@ func ConfigureDatabases(dbs []Database) error {
 	return configureDatabases(s, dbs, gid)
 }
 
-func writeFPM(s Settings) error {
-	worker, err := user.Lookup(service)
-	if err != nil {
-		return err
-	}
-	group, err := user.LookupGroupId(worker.Gid)
-	if err != nil {
-		return err
-	}
-	// The private directory contains only app code, its config and runtime files.
-	conf := fmt.Sprintf(`[global]
+func fpmConfigContents(worker, group, socketOwner string) string {
+	// PHP-FPM opens error_log as a file. The journal's stderr stream cannot be reopened.
+	return fmt.Sprintf(`[global]
 daemonize = no
-error_log = /proc/self/fd/2
+%s
 [phpmyadmin]
 user = %s
 group = %s
@@ -244,8 +237,19 @@ php_admin_flag[log_errors] = on
 php_admin_flag[session.cookie_secure] = on
 php_admin_flag[session.cookie_httponly] = on
 php_admin_flag[mysqli.allow_local_infile] = off
-`, worker.Username, group.Name, socket(), nginxAccount(), root(), sessionPath(), tempPath(), tempPath())
-	if err := util.AtomicWriteString(fpmConfig(), conf, 0o600); err != nil {
+`, fpmLogging, worker, group, socket(), socketOwner, root(), sessionPath(), tempPath(), tempPath())
+}
+
+func writeFPM(s Settings) error {
+	worker, err := user.Lookup(service)
+	if err != nil {
+		return err
+	}
+	group, err := user.LookupGroupId(worker.Gid)
+	if err != nil {
+		return err
+	}
+	if err := util.AtomicWriteString(fpmConfig(), fpmConfigContents(worker.Username, group.Name, nginxAccount()), 0o600); err != nil {
 		return err
 	}
 	binary := nativephp.FpmBinary(s.PHP)
@@ -268,6 +272,44 @@ PrivateTmp=true
 WantedBy=multi-user.target
 `, serviceMarker, binary, fpmConfig())
 	return util.AtomicWriteString(unitPath(), unit, 0o644)
+}
+
+func ensureFPMLogging() error {
+	conf, err := os.ReadFile(fpmConfig())
+	if err != nil {
+		return err
+	}
+	old := string(conf)
+	// Repair the logging directive in an existing panel-generated configuration.
+	if fixed := strings.Replace(old, "\nerror_log = /proc/self/fd/2\n", "\n"+fpmLogging+"\n", 1); fixed != old {
+		return util.AtomicWriteString(fpmConfig(), fixed, 0o600)
+	}
+	return nil
+}
+
+func startFPM(args ...string) error {
+	if err := ensureFPMLogging(); err != nil {
+		return err
+	}
+	return systemctl(append(args, service)...)
+}
+
+func withFPMJournal(cause error, since time.Time, log io.Writer) error {
+	if cause == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "journalctl", "-u", service, "--since", "@"+strconv.FormatInt(since.Unix(), 10),
+		"-n", "20", "--no-pager", "-o", "cat").Output()
+	if detail := strings.TrimSpace(string(out)); err == nil && detail != "" && detail != "-- No entries --" {
+		if log != nil {
+			fmt.Fprintln(log, "phpMyAdmin PHP-FPM 服务日志\n"+detail)
+			return cause
+		}
+		return fmt.Errorf("%w\nphpMyAdmin PHP-FPM 服务日志:\n%s", cause, detail)
+	}
+	return cause
 }
 
 func nginxAccount() string {
@@ -378,14 +420,15 @@ func waitReady(s Settings, password string) error {
 	return fmt.Errorf("phpMyAdmin 的 HTTPS 或 PHP-FPM 未就绪: %w", lastErr)
 }
 
-func start(s Settings, password string) error {
+func start(s Settings, password string, log io.Writer) error {
 	previous, err := os.ReadFile(nginxPath())
 	if !os.IsNotExist(err) && (err != nil || !strings.HasPrefix(string(previous), nginxMarker)) {
 		return fmt.Errorf("已存在其他 nginx 配置文件: %s", nginxPath())
 	}
 	wasRunning := systemctl("is-active", "--quiet", service) == nil
-	if err := systemctl("enable", "--now", service); err != nil {
-		return err
+	since := time.Now()
+	if err := startFPM("enable", "--now"); err != nil {
+		return withFPMJournal(err, since, log)
 	}
 	rollback := func(cause error, restoreConfig bool) error {
 		var restoreErr, stopErr error
@@ -411,7 +454,7 @@ func start(s Settings, password string) error {
 		return rollback(err, true)
 	}
 	if err := waitReady(s, password); err != nil {
-		return rollback(err, true)
+		return rollback(withFPMJournal(err, since, log), true)
 	}
 	return nil
 }
@@ -518,7 +561,7 @@ func Install(s Settings, version, password string, dbs []Database, log io.Writer
 	if err := systemctl("daemon-reload"); err != nil {
 		return rollback(err)
 	}
-	if err := start(s, password); err != nil {
+	if err := start(s, password, log); err != nil {
 		return rollback(err)
 	}
 	if err := saveSettings(s); err != nil {
@@ -560,10 +603,11 @@ func Upgrade(version string, log io.Writer) error {
 	}
 	if ownsFile(nginxPath(), nginxMarker) {
 		restart := func() error {
-			if err := systemctl("restart", service); err != nil {
-				return err
+			since := time.Now()
+			if err := startFPM("restart"); err != nil {
+				return withFPMJournal(err, since, log)
 			}
-			return waitReady(s, "")
+			return withFPMJournal(waitReady(s, ""), since, log)
 		}
 		if err := restart(); err != nil {
 			if rollbackErr := switchRelease(old); rollbackErr != nil {
@@ -594,8 +638,9 @@ func Action(verb string) error {
 	}
 	switch verb {
 	case "restart":
-		if err := systemctl("restart", service); err != nil {
-			return err
+		since := time.Now()
+		if err := startFPM("restart"); err != nil {
+			return withFPMJournal(err, since, nil)
 		}
 	case "start":
 	default:
@@ -604,7 +649,7 @@ func Action(verb string) error {
 	if err := prepareCertificate(&s); err != nil {
 		return err
 	}
-	if err := start(s, ""); err != nil {
+	if err := start(s, "", nil); err != nil {
 		return err
 	}
 	return saveSettings(s)
@@ -639,11 +684,12 @@ func RestartPHP(minor string) error {
 	if s.PHP != minor || !ownsFile(unitPath(), serviceMarker) || systemctl("is-active", "--quiet", service) != nil {
 		return nil
 	}
-	if err := systemctl("restart", service); err != nil {
-		return err
+	since := time.Now()
+	if err := startFPM("restart"); err != nil {
+		return withFPMJournal(err, since, nil)
 	}
 	if ownsFile(nginxPath(), nginxMarker) && nativenginx.Status() == "running" {
-		return waitReady(s, "")
+		return withFPMJournal(waitReady(s, ""), since, nil)
 	}
 	return nil
 }
