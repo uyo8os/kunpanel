@@ -10,7 +10,7 @@ on:
         description: Stable version tag (vX.Y.Z)
         required: true
         type: string
-        default: v2.98.8
+        default: v2.98.9
 
 permissions:
   contents: write
