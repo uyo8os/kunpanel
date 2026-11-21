@@ -43,6 +43,9 @@ func (m packageManager) install(w io.Writer, packages ...systemPackage) error {
 			names = append(names, name)
 		}
 	}
+	if len(names) == 0 {
+		return nil
+	}
 	args := []string{"install", "-y"}
 	if m.name == "apt-get" {
 		args = append(args, "--no-install-recommends")
@@ -84,6 +87,8 @@ var mysqlLibraries = map[string]systemPackage{
 	"libtinfo.so.6":    {"libtinfo6", "ncurses-libs"},
 	"libncurses.so.5":  {"libncurses5", "ncurses-compat-libs"},
 	"libncursesw.so.5": {"libncursesw5", "ncurses-compat-libs"},
+	"libncurses.so.6":  {"libncurses6", "ncurses-libs"},
+	"libncursesw.so.6": {"libncursesw6", "ncurses-libs"},
 	"libcrypt.so.1":    {"libcrypt1", "libxcrypt-compat"},
 	"libz.so.1":        {"zlib1g", "zlib"},
 }
@@ -97,7 +102,7 @@ func missingLibraries(prefix string) ([]string, error) {
 			return nil, fmt.Errorf("官方 MySQL 安装包缺少 %s", name)
 		}
 		cmd := exec.Command("ldd", file)
-		cmd.Env = libraryEnv(prefix)
+		cmd.Env = append(libraryEnv(prefix), "LC_ALL=C")
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("无法检查 MySQL %s 的系统依赖: %s (%w)", name, strings.TrimSpace(string(out)), err)
@@ -127,17 +132,21 @@ func prepareLibraries(prefix string, w io.Writer) error {
 		return err
 	}
 	var packages []systemPackage
+	var legacyNCurses []string
 	var aioCompat bool
+	debian := m.name == "apt-get" && isDebian()
 	for _, library := range missing {
 		p, ok := mysqlLibraries[library]
 		if !ok {
 			return fmt.Errorf("当前系统缺少 MySQL 依赖 %s", library)
 		}
-		if library == "libaio.so.1" && m.name == "apt-get" {
-			if out, err := output(10*time.Second, "apt-cache", "show", "--no-all-versions", p.apt); err != nil || !strings.Contains(out, "Package: libaio1\n") {
-				// Supported platforms are 64-bit. The t64 library keeps the libaio ABI there.
-				p.apt, aioCompat = "libaio1t64", true
-			}
+		if library == "libaio.so.1" && m.name == "apt-get" && !aptHasPackage(p.apt) {
+			// Both supported architectures are 64-bit. The t64 library keeps the libaio ABI there.
+			p.apt, aioCompat = "libaio1t64", true
+		}
+		if _, legacy := debianNCurses5[library]; debian && legacy && !aptHasPackage(p.apt) {
+			legacyNCurses = append(legacyNCurses, library)
+			continue
 		}
 		packages = append(packages, p)
 	}
@@ -149,11 +158,21 @@ func prepareLibraries(prefix string, w io.Writer) error {
 			return err
 		}
 	}
+	if len(legacyNCurses) > 0 {
+		if err := installDebianNCurses5(prefix, legacyNCurses, w); err != nil {
+			return err
+		}
+	}
 	missing, err = missingLibraries(prefix)
 	if err == nil && len(missing) != 0 {
 		return fmt.Errorf("MySQL 仍缺少系统依赖: %s", strings.Join(missing, ", "))
 	}
 	return err
+}
+
+func aptHasPackage(name string) bool {
+	out, err := output(10*time.Second, "apt-cache", "show", "--no-all-versions", name)
+	return err == nil && strings.Contains("\n"+out, "\nPackage: "+name+"\n")
 }
 
 func linkLibAIO(prefix string) error {
