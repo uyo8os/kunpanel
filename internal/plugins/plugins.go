@@ -38,20 +38,32 @@ type Info struct {
 	Active       bool     `json:"active"`
 	Requires     []string `json:"requires"`      // 依赖的应用 key
 	RequiresNote string   `json:"requires_note"` // 依赖说明(未满足时展示)
+	Runtime      string   `json:"runtime"`
 }
 
 var wafDir = func() string { return filepath.Join(config.DataDir(), "plugins", "waf") }
 
 func wafSettingsPath() string { return filepath.Join(wafDir(), "config.json") }
-func wafLogPath() string      { return filepath.Join(wafDir(), "logs", "waf.log") }
+func wafLogPath() string {
+	if nativenginx.Installed() {
+		return filepath.Join(nativeWafLogDir(), "waf.log")
+	}
+	return filepath.Join(wafDir(), "logs", "waf.log")
+}
 func wafConfSnippet() string {
 	return filepath.Join(config.DataDir(), "websites", "conf.d", "kunwaf.conf")
 }
-func wafInstalled() bool { return exists(wafConfSnippet()) }
+func wafInstalled() bool {
+	if nativenginx.Installed() {
+		return nativenginx.WAFConfigured() && nativeWafSnippetPresent() &&
+			exists(nativenginx.WAFScriptPath()) && exists(wafSettingsPath())
+	}
+	return !nativeWafSnippetPresent() && exists(wafConfSnippet())
+}
 
 // WafActive WAF 是否生效(已安装且总开关开启)——供网站模块生成配置时调用
 func WafActive() bool {
-	return !nativenginx.Installed() && wafInstalled() && GetWafSettings().Enabled
+	return wafInstalled() && GetWafSettings().Enabled
 }
 
 // Init 注入网站模块钩子
@@ -68,8 +80,15 @@ func Init() {
 // 且没有任何报错。WAF 已安装(引擎文件在)时启动即按内嵌内容补齐;
 // 内容有实际变化时顺手 reload 网关使其生效。
 func syncWafLua() {
-	// 原生网关不加载容器 WAF，不能在启动时重建 Lua 指令污染 nginx 配置。
 	if nativenginx.Installed() {
+		if nativenginx.WAFConfigured() && nativeWafSnippetPresent() {
+			if changed, err := syncNativeWafScript(); err == nil && changed && nativenginx.Status() == "running" {
+				_ = websites.Reload()
+			}
+		}
+		return
+	}
+	if nativeWafSnippetPresent() {
 		return
 	}
 	dst := filepath.Join(wafDir(), "waf.lua")
@@ -103,7 +122,14 @@ func syncWafLua() {
 
 // List 插件列表
 func List() []Info {
-	gwOK := gatewayContainer() != ""
+	gwOK := false
+	runtime := "container"
+	if nativenginx.Installed() {
+		runtime = "native"
+		gwOK = nativenginx.Status() == "running"
+	} else {
+		gwOK = gatewayContainer() != ""
+	}
 	status := "not_installed"
 	active := false
 	if wafInstalled() {
@@ -117,8 +143,9 @@ func List() []Info {
 		Desc:         "基于 nginx + Lua 的网站防火墙:支持官方 Nginx 一键开启(自动装配 Lua 引擎版 nginx)或 OpenResty;CC 攻击防护、IP/UA 黑白名单、SQL 注入 / XSS / 文件包含 / 命令执行 / 扫描器拦截,带拦截日志与统计看板",
 		Status:       status,
 		Active:       active,
+		Runtime:      runtime,
 		Requires:     []string{"nginx"},
-		RequiresNote: "需要先在应用商店安装 Nginx 或 OpenResty(网站模块依赖);对 Nginx 开启 WAF 时,面板会自动编译并替换为带 Lua 引擎的 nginx 镜像(首次约 5-8 分钟,站点配置不受影响)",
+		RequiresNote: "需运行中的原生 Nginx 或已有的 Nginx/OpenResty 容器。原生模式首次安装会编译当前 Nginx 版本的 Lua 模块。",
 	}}
 }
 
@@ -675,7 +702,7 @@ func InstallWaf(w io.Writer) error {
 	wafOpMu.Lock()
 	defer wafOpMu.Unlock()
 	if nativenginx.Installed() {
-		return fmt.Errorf("原生 Nginx 不支持面板内置 WAF，请使用独立 WAF")
+		return installNativeWaf(w)
 	}
 	gw := gatewayContainer()
 	if gw == "" {
@@ -741,6 +768,9 @@ func InstallWaf(w io.Writer) error {
 func UninstallWaf(w io.Writer) error {
 	wafOpMu.Lock()
 	defer wafOpMu.Unlock()
+	if nativenginx.Installed() {
+		return uninstallNativeWaf(w)
+	}
 	fmt.Fprintln(w, "[1/3] 移除 WAF 注入配置 ...")
 	_ = os.Remove(wafConfSnippet())
 	if err := websites.RewriteAllConfs(); err != nil {
@@ -882,7 +912,7 @@ func readAllLogs() []WafLogEntry {
 // 旧实现每次 WAF 日志请求都全量读文件 + split,高攻击流量下每请求数 MB 分配,
 // 是面板卡死的诱因之一。
 func tailLines(path string, maxLines int) []string {
-	f, err := os.Open(path)
+	f, err := openWafLog(path)
 	if err != nil {
 		return nil
 	}

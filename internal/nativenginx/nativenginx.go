@@ -85,12 +85,16 @@ func parseVersions(page string) ([]Version, error) {
 }
 
 func fetch(url string, limit int64) ([]byte, error) {
+	return fetchWithClient(webClient, url, limit)
+}
+
+func fetchWithClient(client *http.Client, url string, limit int64) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "kunpanel-native-nginx")
-	resp, err := webClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -311,6 +315,10 @@ func rejectWAF() error {
 	if err != nil {
 		return err
 	}
+	badDirectives := []string{"/usr/local/kunwaf/", "root /var/www/", "/etc/nginx/ssl/"}
+	if !WAFConfigured() {
+		badDirectives = append(badDirectives, "access_by_lua", "lua_shared_dict", "more_set_headers", "lua_package_path", "init_by_lua", "header_filter_by_lua")
+	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".conf") {
 			continue
@@ -320,7 +328,7 @@ func rejectWAF() error {
 			return err
 		}
 		s := strings.ToLower(string(b))
-		for _, bad := range []string{"access_by_lua", "lua_shared_dict", "more_set_headers", "lua_package_path", "init_by_lua", "header_filter_by_lua", "root /var/www/", "/etc/nginx/ssl/"} {
+		for _, bad := range badDirectives {
 			if strings.Contains(s, bad) {
 				return fmt.Errorf("现有站点配置 %s 含 WAF 指令或容器路径，暂不能直接迁移；请先备份并调整配置", entry.Name())
 			}
@@ -634,7 +642,7 @@ func Install(version string, w io.Writer) error {
 		}
 		srcDir := filepath.Join(work, "nginx-"+version)
 		fmt.Fprintln(w, "编译 Nginx，可能需要几分钟...")
-		args := []string{"--prefix=" + target, "--with-http_ssl_module", "--with-http_v2_module", "--with-http_realip_module", "--with-http_stub_status_module", "--with-http_gzip_static_module", "--with-threads"}
+		args := buildOptions(target)
 		if err = run(w, 5*time.Minute, srcDir, "./configure", args...); err != nil {
 			return err
 		}
@@ -657,6 +665,14 @@ func Install(version string, w io.Writer) error {
 	}
 	if err = writeInitialConfig(); err != nil {
 		return err
+	}
+	if WAFConfigured() {
+		if err := prepareWAFModules(target, version, w); err != nil {
+			return fmt.Errorf("候选 Nginx 的 WAF 模块未就绪，保留原服务: %w", err)
+		}
+		if err := run(w, 30*time.Second, "", filepath.Join(target, "sbin", "nginx"), "-p", target+"/", "-c", ConfigPath(), "-t"); err != nil {
+			return fmt.Errorf("候选 Nginx 的 WAF 配置校验失败，保留原服务: %w", err)
+		}
 	}
 	old, _ := os.Readlink(Prefix())
 	next := filepath.Join(root(), ".current-new")

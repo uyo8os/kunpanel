@@ -4909,7 +4909,8 @@ PAGES.plugins = {
         '<div style="margin-bottom:16px">' + iconBox("shield", 64) + "</div>" +
         '<h3 style="font-size:18px;margin-bottom:8px">WAF 防火墙</h3>' +
         '<p style="color:var(--text-3);font-size:13.5px;margin-bottom:6px">CC 攻击防护、IP/UA 黑白名单、URL 白名单、SQL 注入 / XSS / 文件包含 / 命令执行 / 扫描器拦截、IP 临时封禁、拦截日志</p>' +
-        '<p style="color:var(--text-3);font-size:12.5px;margin-bottom:20px">内置 WAF 仅支持已有的 Nginx 或 OpenResty 容器，原生 Nginx 请使用独立 WAF。<br><span style="font-size:11.5px">对 Nginx 容器开启时，面板会编译替换为带 Lua 引擎的镜像。</span></p>' +
+        '<p style="color:var(--text-3);font-size:12.5px;margin-bottom:20px">' +
+        (info.runtime === "native" ? "首次安装会编译当前原生 Nginx 版本的 Lua 模块。" : "支持原生 Nginx 和已有的 Nginx 或 OpenResty 容器。") + '</p>' +
         '<button class="btn btn-primary" id="waf-install">' + I("download") + ' 安装插件</button> ' +
         '<a class="btn btn-plain" href="#/apps">去安装 Nginx</a></div>';
       qs("#waf-install", el).onclick = function() {
@@ -4928,7 +4929,7 @@ PAGES.plugins = {
     var head = '<div class="waf-hero">' +
       '<div class="waf-hero-left">' + iconBox("shield", 46) +
       '<div class="stat-meta"><h3>WAF 防火墙 ' + stateTag(info.active, "防护中", "已停用") + "</h3>" +
-      '<div class="stat-line"><span class="tag tag-primary">' + esc(modeName) + "</span> · Nginx + Lua 引擎 · v" + esc((info.settings && info.settings.version) || "1.0") + "</div></div></div>" +
+      '<div class="stat-line"><span class="tag tag-primary">' + esc(modeName) + "</span> · " + (info.runtime === "native" ? "原生 Nginx" : "容器网关") + " · Lua 引擎</div></div></div>" +
       '<div class="waf-hero-mid">' +
       '<div class="wh-stat danger"><b>' + (stats.today || 0) + "</b><span>今日拦截</span></div>" +
       '<div class="wh-stat"><b>' + (stats.total || 0) + "</b><span>累计拦截</span></div>" +
@@ -4960,11 +4961,11 @@ PAGES.plugins = {
     };
     qs("#waf-refresh", el).onclick = function() { self.render(el); };
     qs("#waf-uninstall", el).onclick = function() {
-      confirmDlg("确定卸载 WAF 插件吗?所有站点将恢复无防护状态。", { danger: true }).then(function(ok) {
+      confirmDlg(info.runtime === "native" ? "卸载 WAF 插件？站点将停止使用该防护，规则和日志会保留。" : "卸载 WAF 插件？站点将停止使用该防护，规则和日志会被删除。", { danger: true }).then(function(ok) {
         if (!ok) return;
-        api("/plugins/waf/uninstall", { method: "POST", body: "{}" }).then(function() {
-          toast("已卸载"); setTimeout(function() { self.render(el); }, 1000);
-        });
+        api("/plugins/waf/uninstall", { method: "POST", body: {} }).then(function(d) {
+          if (d && d.id) taskModal(d.id, function() { self.render(el); });
+        }).catch(function(e) { toast(e.message, "error", 6000); });
       });
     };
     qsa(".hub-tab", el).forEach(function(t) {

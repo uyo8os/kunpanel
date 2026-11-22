@@ -36,7 +36,15 @@ func (s *Server) handlePluginAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 安装/卸载涉及容器重建与配置重写,放后台任务执行并返回任务 ID 供前端跟踪
-	t, err := taskx.M.Start("plugin-"+key+"-"+action, run)
+	t, err := taskx.M.Start("plugin-"+key+"-"+action, func(log io.Writer) error {
+		unlock := lockAppOp("nginx")
+		defer unlock()
+		if err := run(log); err != nil {
+			return err
+		}
+		invalidateWafInfo()
+		return nil
+	})
 	if err != nil {
 		Fail(w, http.StatusConflict, err.Error())
 		return
@@ -49,6 +57,12 @@ var (
 	wafInfoCache map[string]any
 	wafInfoAt    time.Time
 )
+
+func invalidateWafInfo() {
+	wafInfoMu.Lock()
+	wafInfoCache = nil
+	wafInfoMu.Unlock()
+}
 
 func (s *Server) handleWafInfo(w http.ResponseWriter, r *http.Request) {
 	// 3s 缓存:stats 读日志文件 + 状态检测含多次 exec,高频轮询下开销集中
@@ -67,13 +81,18 @@ func (s *Server) handleWafInfo(w http.ResponseWriter, r *http.Request) {
 			waf = &list[i]
 		}
 	}
-	if waf == nil || waf.Status == "not_installed" {
+	if waf == nil {
 		OK(w, map[string]any{"installed": false})
+		return
+	}
+	if waf.Status == "not_installed" {
+		OK(w, map[string]any{"installed": false, "runtime": waf.Runtime})
 		return
 	}
 	out := map[string]any{
 		"installed": true,
 		"active":    waf.Active,
+		"runtime":   waf.Runtime,
 		"settings":  plugins.GetWafSettings(),
 		"stats":     plugins.WafStats(),
 	}
@@ -113,6 +132,7 @@ func (s *Server) handleWafSettings(w http.ResponseWriter, r *http.Request) {
 		Fail(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	invalidateWafInfo()
 	OK(w, map[string]any{"active": plugins.WafActive()})
 }
 

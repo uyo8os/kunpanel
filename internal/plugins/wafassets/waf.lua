@@ -51,7 +51,6 @@ end
 
 local function write_log(rule, detail, action)
     pcall(function()
-        os.execute("mkdir -p " .. LOG_DIR)
         rotate_if_needed()
         local entry = json.encode({
             time = os.date("%Y-%m-%d %H:%M:%S"),

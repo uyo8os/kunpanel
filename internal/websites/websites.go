@@ -187,9 +187,19 @@ type ReloadMode struct {
 // WafEnabled 由插件模块注入(plugins.Init);返回 true 时新站点配置自动注入 WAF 防护
 var WafEnabled func() bool
 
-func wafOn() bool {
-	// 原生 Nginx 不依赖面板的 Lua WAF；旧容器的 WAF 设置不得污染其站点配置。
-	return WafEnabled != nil && WafEnabled() && DetectNginx().Target != ManagedNginxBinary()
+func wafAccessDirective(mode ReloadMode) string {
+	if mode.Target == ManagedNginxBinary() {
+		// The Lua engine reads the on/off setting itself, so sites created with
+		// protection paused become protected when it is resumed.
+		if nativenginx.WAFConfigured() {
+			return "    access_by_lua_file " + strconv.Quote(nativenginx.WAFScriptPath()) + ";\n"
+		}
+		return ""
+	}
+	if WafEnabled != nil && WafEnabled() {
+		return "    access_by_lua_file /usr/local/kunwaf/waf.lua;\n"
+	}
+	return ""
 }
 
 // RewriteAllConfs 按当前状态重新生成全部已启用站点配置并重载(WAF 启停时调用)
@@ -990,6 +1000,7 @@ func writeConf(s *Site) error {
 	}
 
 	mode := DetectNginx()
+	wafAccess := wafAccessDirective(mode)
 	root := s.Root
 	challengeRoot := s.Root
 	if mode.Mode == "container" && s.Type != "phpfpm" && underRootsDir(s.Root) {
@@ -1084,10 +1095,7 @@ func writeConf(s *Site) error {
 	if sslLines != "" {
 		b.WriteString("    # HTTPS 证书\n" + sslLines + "\n")
 	}
-	if wafOn() {
-		// WAF 插件生效:在 server 级别挂载访问检测
-		b.WriteString("    # 坤面板 WAF 防火墙\n    access_by_lua_file /usr/local/kunwaf/waf.lua;\n\n")
-	}
+	b.WriteString(wafAccess)
 	b.WriteString("    # ACME 证书签发验证\n" + challengeLoc)
 	if s.AuthEnabled {
 		b.WriteString(authConfLines(s))
@@ -1204,9 +1212,7 @@ func writeConf(s *Site) error {
 				}
 			}
 			b.WriteString("    # ACME 证书签发验证\n    location ^~ /.well-known/acme-challenge/ {\n        root " + challengeRootConf + ";\n    }\n")
-			if wafOn() {
-				b.WriteString("    access_by_lua_file /usr/local/kunwaf/waf.lua;\n")
-			}
+			b.WriteString(wafAccess)
 			fmt.Fprintf(&b, "    access_log %s/%s.access.log;\n", logDir, safeName+"."+strings.Split(sub.SubDomain, ".")[0])
 			idx := strings.TrimSpace(s.IndexFiles)
 			if idx == "" {
