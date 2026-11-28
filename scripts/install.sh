@@ -206,7 +206,9 @@ rm -f "$TMP_TGZ"
 
 # ---------------- 初始化配置(端口/账号) ----------------
 # 首次运行生成配置(随机端口/随机入口/随机密码,可被参数覆盖)
+KP_FIRST_INSTALL=false
 if [[ ! -f "$KP_DIR/data/config.json" ]]; then
+  KP_FIRST_INSTALL=true
   FIRST_ENV=()
   [[ -n "$KP_PORT" ]] && FIRST_ENV+=("KP_PORT=$KP_PORT")
   [[ -n "$KP_USERNAME" ]] && FIRST_ENV+=("KP_USERNAME=$KP_USERNAME")
@@ -324,8 +326,8 @@ else
   install_nohup
 fi
 
-# ---------------- 防火墙放行(尽力而为) ----------------
-# 面板自身也会在首次初始化时放行(双层保险);此处等待并提取实际端口再次确认
+# ---------------- 首次安装时放行防火墙(尽力而为) ----------------
+# 面板首次初始化也会尝试放行;安装脚本仅在新部署时再次确认。
 PORT_HINT=""
 if [[ -n "$KP_PORT" ]]; then
   PORT_HINT="$KP_PORT"
@@ -338,7 +340,7 @@ else
     sleep 1
   done
 fi
-if [[ -n "$PORT_HINT" ]]; then
+if $KP_FIRST_INSTALL && [[ -n "$PORT_HINT" ]]; then
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw list 2>/dev/null | grep -q "$PORT_HINT/tcp" || ufw allow "$PORT_HINT/tcp" >/dev/null 2>&1
     ufw status 2>/dev/null | grep -q "$PORT_HINT/tcp" && info "已放行 ufw 端口 $PORT_HINT" || warn "ufw 放行端口 $PORT_HINT 失败,请手动执行: ufw allow $PORT_HINT/tcp"
@@ -358,7 +360,7 @@ if [[ -n "$PORT_HINT" ]]; then
       info "已放行裸 iptables 端口 $PORT_HINT"
     fi
   fi
-else
+elif $KP_FIRST_INSTALL; then
   warn "未能自动检测面板端口(面板可能尚未完成初始化),请从上方面板地址查看端口并手动放行防火墙"
 fi
 

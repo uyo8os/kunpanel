@@ -68,8 +68,6 @@ func Load() (*Manager, error) {
 				_ = M.Save()
 				fmt.Println("已为面板自动生成随机安全入口:/", M.Cfg.Entrance, "(可在面板设置中修改或关闭)")
 			}
-			// 每次启动确保监听端口在系统防火墙已放行(幂等;升级/迁移后端口不符的场景自愈)
-			OpenFirewallPort(M.Cfg.Port)
 			return M, nil
 		}
 	}
